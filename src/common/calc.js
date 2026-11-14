@@ -43,10 +43,12 @@ function tokenize(src) {
         if (digs.length >= 16) {
           if (!isFinite(v)) throw new Error('overflow')
           // 核对优先用 BigInt 精确比较：String(v) 是最短回读串，21 位附近会出现「已舍入但回读同串」的盲区
-          //（如 9007199254740993e5）；无 BigInt 的运行时退回 String 回读（≥22 位保守报错）。
+          //（如 9007199254740993e5，真实差 31072 却回读同串）；无 BigInt 的运行时 1.5.13 改用
+          // toFixed(0) 的精确十进制展开比对（<1e21 时给出双精度值的全部整数位），盲区关闭；
+          // ≥22 位保守报错。
           let inexact
           if (typeof BigInt === 'function') inexact = BigInt(digs) !== BigInt(v)
-          else inexact = digs.length <= 21 ? String(v) !== digs : true
+          else inexact = digs.length <= 21 ? v.toFixed(0) !== digs : true
           if (inexact) throw new Error('precision')
         }
       }
@@ -100,11 +102,34 @@ function intDigitsOf(lit) {
   return digs || '0'
 }
 
+// 两数和的精确误差项（Knuth TwoSum）：非零即 a+b 的双精度结果已被舍入
+function twoSumErr(a, b) {
+  const s = a + b
+  const bb = s - a
+  return (a - (s - bb)) + (b - bb)
+}
+// 两数积的精确误差项（Dekker TwoProduct，劈分常数 2^27+1）：非零即 a*b 已被舍入。
+// 调用方须保证 |a|、|b| ≤ 1e150（劈分乘法不溢出）
+function twoProdErr(a, b) {
+  const p = a * b
+  const SP = 134217729
+  const ca = SP * a, ah = ca - (ca - a), al = a - ah
+  const cb = SP * b, bh = cb - (cb - b), bl = b - bh
+  return ((ah * bh - p) + ah * bl + al * bh) + al * bl
+}
+
 function fact(n) {
   if (n < 0 || !Number.isInteger(n)) throw new Error('fact domain')
   if (n > 170) throw new Error('overflow')
   let r = 1
-  for (let k = 2; k <= n; k++) r *= k
+  for (let k = 2; k <= n; k++) {
+    // 阶乘是精确整数运算：23! 起双精度装不下精确值（23! 与真值差 1572864），
+    // 旧版静默给舍入值还当精确整数显示（ChatGPT 第九份报告实证）；逐步用
+    // TwoProduct 误差项核对，装不下就明确报「整数超出精确范围」（与 gcdLcm 口径一致）。
+    // 22! 及以下每步乘积都可精确表示，不受影响
+    if (twoProdErr(r, k) !== 0) throw new Error('precision')
+    r *= k
+  }
   return r
 }
 
@@ -175,7 +200,13 @@ function evaluate(src, opts) {
       const op = next().t
       nPost++
       if (op === '%') { if (pctRaw === null && nPost === 1) pctRaw = v; else pctRaw = null; v = v / 100 }
-      else if (op === '²') { pctRaw = null; v = v * v }
+      else if (op === '²') {
+        pctRaw = null
+        // 整数平方精确性守卫（1.5.13，与 × 同口径）：装不下精确值且仍在全位显示
+        // 量级（<1e21）时报错，不静默给错整数
+        if (Number.isInteger(v) && Math.abs(v) <= 1e150 && Math.abs(v * v) < 1e21 && twoProdErr(v, v) !== 0) throw new Error('precision')
+        v = v * v
+      }
       else if (op === '!') { pctRaw = null; v = fact(v) }
       else if (op === '°') { pctRaw = null; v = v * Math.PI / 180; rad = true }
     }
@@ -195,6 +226,14 @@ function evaluate(src, opts) {
       const exp = parsePower()
       const v = Math.pow(base.v, exp.v)
       if (isNaN(v)) throw new Error('domain')
+      // 整数幂精确性守卫（1.5.13）：结果超出安全整数、又没到科学计数法量级（<1e21）时，
+      // 用 BigInt 核对真值（3^40 这类幂本身就算出已舍入的整数）；无 BigInt 保守报错。
+      // 2^53、2^54、10^20 等真值可精确表示的照常放行；≥1e21 按浮点惯例不拦
+      if (Number.isInteger(base.v) && Number.isInteger(exp.v) && exp.v >= 0 && Number.isInteger(v) && Math.abs(v) > 9007199254740991 && Math.abs(v) < 1e21) {
+        let bad = true
+        if (typeof BigInt === 'function') { try { bad = BigInt(base.v) ** BigInt(exp.v) !== BigInt(v) } catch (e) { bad = false } }
+        if (bad) throw new Error('precision')
+      }
       return { v: v, pctRaw: null, rad: base.rad || exp.rad }
     }
     return base
@@ -206,10 +245,23 @@ function evaluate(src, opts) {
       const op = next().t
       const right = parsePower()
       single = false
-      if (op === '*') left = { v: left.v * right.v, pctRaw: null, rad: left.rad || right.rad }
+      if (op === '*') {
+        // 整数乘积精确性守卫（1.5.13）：TwoProduct 误差项非零即乘积已被舍入；
+        // 结果仍在全位显示量级（<1e21）时报错，不静默给错整数（ChatGPT 第九份报告）；
+        // ≥1e21 进入科学计数法量级、按浮点惯例不拦（与 +/−/^ 守卫同一口径）
+        if (Number.isInteger(left.v) && Number.isInteger(right.v)) {
+          const p = left.v * right.v
+          if (isFinite(p) && Math.abs(p) < 1e21 && Math.abs(left.v) <= 1e150 && Math.abs(right.v) <= 1e150 && twoProdErr(left.v, right.v) !== 0) throw new Error('precision')
+          left = { v: p, pctRaw: null, rad: left.rad || right.rad }
+        } else left = { v: left.v * right.v, pctRaw: null, rad: left.rad || right.rad }
+      }
       else {
         if (right.v === 0) throw new Error('div0')
-        left = { v: left.v / right.v, pctRaw: null, rad: left.rad || right.rad }
+        // 整除精确性守卫（1.5.13）：商是整数时用乘积误差项反核 q×除数 必须恰好
+        // 等于被除数，否则这个「整数商」是舍入凑出来的，报错
+        let qv = left.v / right.v
+        if (Number.isInteger(left.v) && Number.isInteger(right.v) && Number.isInteger(qv) && Math.abs(qv) < 1e21 && Math.abs(qv) <= 1e150 && Math.abs(right.v) <= 1e150 && (twoProdErr(qv, right.v) !== 0 || qv * right.v !== left.v)) throw new Error('precision')
+        left = { v: qv, pctRaw: null, rad: left.rad || right.rad }
       }
     }
     return { v: left.v, pctRaw: single ? left.pctRaw : null, rad: left.rad }
@@ -223,7 +275,15 @@ function evaluate(src, opts) {
       const right = parseTerm()
       let rv = right.v
       if (right.pctRaw !== null) rv = lv * right.pctRaw / 100
-      lv = op === '+' ? lv + rv : lv - rv
+      // 整数加减精确性守卫（1.5.13）：9007199254740992+1 旧版静默吞掉 +1、结果还
+      // 显示精确等号，(9007199254740992+1)−9007199254740992 因此得 0（真值 1）；
+      // TwoSum 误差项非零即和已被舍入（ChatGPT 第九份报告实证）。结果 ≥1e21
+      // 进入科学计数法量级、按浮点惯例不拦
+      if (Number.isInteger(lv) && Number.isInteger(rv)) {
+        const s = op === '+' ? lv + rv : lv - rv
+        if (isFinite(s) && Math.abs(s) < 1e21 && twoSumErr(lv, op === '+' ? rv : -rv) !== 0) throw new Error('precision')
+        lv = s
+      } else lv = op === '+' ? lv + rv : lv - rv
       lrad = lrad || right.rad
     }
     return { v: lv, rad: lrad }
@@ -326,6 +386,11 @@ function toFraction(v) {
 // 12 位内对不上，判近似。与 eqSign 的回读口径同哲学：以应用自身的显示精度为准
 function fracIsExact(v, fr) {
   if (!fr) return false
+  // 分母为 1 的「分数」就是整数本身：与原值逐位相同才算精确（1.5.13）。
+  // 旧版一律走 12 位有效数字比对，而 cleanNum 对整数保留全位——1234567890123
+  // 这类 13 位精确整数被误标 ≈（ChatGPT 第九份报告实证）；非整数值误认成
+  // 整数分数时 fr.n !== v、仍判近似，不受影响
+  if (fr.d === 1) return fr.n === v
   return parseFloat((fr.n / fr.d).toPrecision(12)) === cleanNum(v)
 }
 
