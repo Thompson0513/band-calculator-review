@@ -76,7 +76,7 @@ for (const k of Object.keys(def)) if (typeof def[k] === 'function') inst[k] = de
 inst.onInit()
 return inst
 }
-const FN154 = ['FD', 'fitResStr', 'hardFit', 'ansStr', 'cplxStr', 'gcd2', 'rMul', 'rSub', 'quadExact', 'sqrtRat', 'radTerm', 'quadRadStrs', 'radAnsStr', 'quadImRad', 'cplxRadStr', 'DP', 'linePx', 'pvStr', 'rootsLine']
+const FN154 = ['dm', 'trimSci', 'FD', 'fitResStr', 'hardFit', 'ansStr', 'cplxStr', 'gcd2', 'rMul', 'rSub', 'quadExact', 'sqrtRat', 'radTerm', 'quadRadStrs', 'radAnsStr', 'quadImRad', 'cplxRadStr', 'DP', 'linePx', 'pvStr', 'rootsLine']
 const F154 = new Function('calc', FN154.map(extractFn).join('\n') + '\nreturn { ' + FN154.join(', ') + '}')(calc)
 const FN155 = ['dispNum', 'unitNumStr', 'unitRatioClean', 'buildUnitProc', 'unitCarryExpr']
 const F155 = new Function('calc', FN155.map(extractFn).join('\n') + '\nreturn { ' + FN155.join(', ') + '}')(calc)
@@ -188,7 +188,7 @@ eq('E 0.3333333333 被认作 1/3（既定容差口径）', JSON.stringify(calc.t
 eq('E Δ 完全平方走有理路径 x1 显示浮点根原值', inst.qLines[1], 'x1 = 3.00000000015')
 eq('E Δ 完全平方走有理路径 x2 显示浮点根原值', inst.qLines[2], 'x2 = −3.00000000015')
 const r = calc.solveQuad(0.3333333333, 0, -2)
-eq('E 口径记录 c=−2 时给 √6（自检容差内）', JSON.stringify(F154.quadRadStrs(0.3333333333, 0, -2, r.x1, r.x2)), JSON.stringify({ x1: '√6', x2: '−√6'}))
+eq('E 口径记录 c=−2 时给 √6（自检容差内）', JSON.stringify(F154.quadRadStrs(0.3333333333, 0, -2, r.x1, r.x2)), JSON.stringify({ x1: '√6', x2: '−√6', exact: false }))
 }
 
 // ---------- F. 分数钮边界（核实记录，不属实） ----------

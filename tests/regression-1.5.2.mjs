@@ -27,7 +27,7 @@ function extractFn(name) {
   throw new Error('函数未配平 ' + name)
 }
 const F = new Function('calc',
-  ['FD', 'fitResStr', 'hardFit', 'DA', 'DP', 'linePx', 'pvStr', 'vertexLine', 'rootsLine', 'linRootLine', 'trigInfoLines'].map(extractFn).join('\n') +
+  ['dm', 'trimSci', 'FD', 'fitResStr', 'hardFit', 'DA', 'DP', 'linePx', 'pvStr', 'vertexLine', 'rootsLine', 'linRootLine', 'trigInfoLines'].map(extractFn).join('\n') +
   '\nreturn { DP, DA, linePx, pvStr, vertexLine, rootsLine, linRootLine, trigInfoLines }'
 )(calc)
 const { DP, DA, linePx, pvStr, vertexLine, rootsLine, linRootLine, trigInfoLines } = F

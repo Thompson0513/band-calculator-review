@@ -27,34 +27,34 @@ function extractFn(name) {
   }
   throw new Error('函数未配平 ' + name)
 }
-const FN = ['dm', 'FD', 'fitResStr', 'hardFit', 'ansStr', 'cplxStr', 'gcd2', 'rMul', 'rSub', 'quadExact', 'sqrtRat', 'radTerm', 'quadRadStrs', 'radAnsStr', 'quadImRad', 'cplxRadStr', 'DP', 'linePx', 'pvStr', 'rootsLine']
+const FN = ['dm', 'trimSci', 'FD', 'fitResStr', 'hardFit', 'ansStr', 'cplxStr', 'gcd2', 'rMul', 'rSub', 'quadExact', 'sqrtRat', 'radTerm', 'quadRadStrs', 'radAnsStr', 'quadImRad', 'cplxRadStr', 'DP', 'linePx', 'pvStr', 'rootsLine']
 const F = new Function('calc', FN.map(extractFn).join('\n') + '\nreturn { ' + FN.join(', ') + ' }')(calc)
 const { quadRadStrs, radAnsStr, quadImRad, cplxRadStr, rootsLine, linePx, ansStr } = F
 
 // ---------- A1 函数层：实根根式组装与约分 ----------
 let r = calc.solveQuad(1, 0, -2)
-eq('x²−2 两根根式', JSON.stringify(quadRadStrs(1, 0, -2, r.x1, r.x2)), JSON.stringify({ x1: '√2', x2: '−√2' }))
+eq('x²−2 两根根式', JSON.stringify(quadRadStrs(1, 0, -2, r.x1, r.x2)), JSON.stringify({ x1: '√2', x2: '−√2', exact: true }))
 eq('x²−2 x1 行：根式在前小数在后', radAnsStr('x1', r.x1, '√2', 28), 'x1 = √2 ≈ 1.41421356237')
 eq('x²−2 x2 行', radAnsStr('x2', r.x2, '−√2', 28), 'x2 = −√2 ≈ −1.41421356237')
 r = calc.solveQuad(2, -3, -1)
-eq('2x²−3x−1 两根根式', JSON.stringify(quadRadStrs(2, -3, -1, r.x1, r.x2)), JSON.stringify({ x1: '(3+√17)/4', x2: '(3−√17)/4' }))
+eq('2x²−3x−1 两根根式', JSON.stringify(quadRadStrs(2, -3, -1, r.x1, r.x2)), JSON.stringify({ x1: '(3+√17)/4', x2: '(3−√17)/4', exact: true }))
 eq('(3+√17)/4 答案行', radAnsStr('x1', r.x1, '(3+√17)/4', 28), 'x1 = (3+√17)/4 ≈ 1.780776406')
 eq('(3−√17)/4 答案行', radAnsStr('x2', r.x2, '(3−√17)/4', 28), 'x2 = (3−√17)/4 ≈ −0.28077641')
 r = calc.solveQuad(2, -8, 2)
-eq('2x²−8x+2 化简约分 (8±4√3)/4 → 2±√3', JSON.stringify(quadRadStrs(2, -8, 2, r.x1, r.x2)), JSON.stringify({ x1: '2+√3', x2: '2−√3' }))
+eq('2x²−8x+2 化简约分 (8±4√3)/4 → 2±√3', JSON.stringify(quadRadStrs(2, -8, 2, r.x1, r.x2)), JSON.stringify({ x1: '2+√3', x2: '2−√3', exact: true }))
 eq('2+√3 答案行', radAnsStr('x1', r.x1, '2+√3', 28), 'x1 = 2+√3 ≈ 3.73205080757')
 r = calc.solveQuad(1, 0, -12)
-eq('x²−12 带系数根式 2√3', JSON.stringify(quadRadStrs(1, 0, -12, r.x1, r.x2)), JSON.stringify({ x1: '2√3', x2: '−2√3' }))
+eq('x²−12 带系数根式 2√3', JSON.stringify(quadRadStrs(1, 0, -12, r.x1, r.x2)), JSON.stringify({ x1: '2√3', x2: '−2√3', exact: true }))
 r = calc.solveQuad(1, 1, -1)
-eq('x²+x−1 黄金根 (−1±√5)/2', JSON.stringify(quadRadStrs(1, 1, -1, r.x1, r.x2)), JSON.stringify({ x1: '(−1+√5)/2', x2: '(−1−√5)/2' }))
+eq('x²+x−1 黄金根 (−1±√5)/2', JSON.stringify(quadRadStrs(1, 1, -1, r.x1, r.x2)), JSON.stringify({ x1: '(−1+√5)/2', x2: '(−1−√5)/2', exact: true }))
 r = calc.solveQuad(3, 0, -1)
-eq('3x²−1 分式根式 √3/3', JSON.stringify(quadRadStrs(3, 0, -1, r.x1, r.x2)), JSON.stringify({ x1: '√3/3', x2: '−√3/3' }))
+eq('3x²−1 分式根式 √3/3', JSON.stringify(quadRadStrs(3, 0, -1, r.x1, r.x2)), JSON.stringify({ x1: '√3/3', x2: '−√3/3', exact: true }))
 r = calc.solveQuad(-1, 0, 2)
-eq('a<0 时根与 ± 正确配对', JSON.stringify(quadRadStrs(-1, 0, 2, r.x1, r.x2)), JSON.stringify({ x1: '−√2', x2: '√2' }))
+eq('a<0 时根与 ± 正确配对', JSON.stringify(quadRadStrs(-1, 0, 2, r.x1, r.x2)), JSON.stringify({ x1: '−√2', x2: '√2', exact: true }))
 
 // ---------- A2 函数层：回退口径（不硬凑） ----------
 r = calc.solveQuad(0.5, 0, -1)
-eq('分数系数 (1/2)x²−1 仍出根式', JSON.stringify(quadRadStrs(0.5, 0, -1, r.x1, r.x2)), JSON.stringify({ x1: '√2', x2: '−√2' }))
+eq('分数系数 (1/2)x²−1 仍出根式', JSON.stringify(quadRadStrs(0.5, 0, -1, r.x1, r.x2)), JSON.stringify({ x1: '√2', x2: '−√2', exact: true }))
 r = calc.solveQuad(1, 0.5, -0.5)
 eq('Δ 为完全平方（根有理）不走根式', quadRadStrs(1, 0.5, -0.5, r.x1, r.x2), null)
 r = calc.solveQuad(1, -3, 2)

@@ -99,6 +99,7 @@ eq('钮无分数', fracChipText(false, null, 2, false), '看分数')
 { const v = calc.evaluate('12.5%'); eq('12.5% 钮显分数', fracChipText(false, calc.toFraction(v), v, false), '1/8') }
 
 // ---------- 9) 单位换算（1.5.3 撤加注）：恒纯小数，走 1.4.19 的 formatDisplay 口径 ----------
+// （1.5.16 修订：极小非零结果被 cleanNum 归零时改走 ≈ 科学计数，不再显示裸 0，见 BUGLOG 1.5.16 第 10 项）
 eq('单位 in→cm 纯小数', calc.formatDisplay(calc.convertUnit(0, 'in', 'cm', 1)), '2.54')
 eq('单位 °C→°F 纯小数', calc.formatDisplay(calc.convertUnit(3, 'c', 'f', 37)), '98.6')
 eq('单位 斤→kg 纯小数', calc.formatDisplay(calc.convertUnit(1, 'jin', 'kg', 1)), '0.5')
@@ -106,7 +107,7 @@ eq('单位 lb→kg 纯小数', calc.formatDisplay(calc.convertUnit(1, 'lb', 'kg'
 eq('单位 km→m 纯小数', calc.formatDisplay(calc.convertUnit(0, 'km', 'm', 1)), '1,000')
 eq('单位 km→ft 纯小数', calc.formatDisplay(calc.convertUnit(0, 'km', 'ft', 1)), '3,280.83989501')
 ok('单位源码无 unitResStr', !ux.includes('unitResStr'), 'unitResStr 应已移除')
-ok('单位走 formatDisplay 口径', ux.includes("this.unitRes = isNaN(r) ? '' : calc.formatDisplay(r)"), 'unitCompute 应恢复 1.4.19 写法')
+ok('单位走 formatDisplay 口径', ux.includes("calc.formatDisplay(r) === '0'") && ux.includes("this.unitRes = '≈ ' + dispNum(r.toExponential(2)"), 'unitCompute 常规走 formatDisplay、极小非零改 ≈ 科学计数（1.5.16）')
 ok('单位结果无加注括号', !calc.formatDisplay(calc.convertUnit(0, 'in', 'cm', 1)).includes('（'), '结果串不应带（n/d）加注')
 
 // ---------- 10) 分数页双向锁定：有分数必有小数行（源码断言 + 计算层） ----------

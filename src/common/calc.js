@@ -85,9 +85,12 @@ function tokenize(src) {
 // 1e999999999 旧版在 '0'.repeat(shift) 处构造近 10 亿字符、抛 Invalid string length
 //（同报告实证）；这种指数下值必然溢出/下溢，不是整数精确性问题，交回普通求值。
 function intDigitsOf(lit) {
-  // 小数部分允许为空（末尾小数点 '123.'、'123.e0' 也是整数伪装，1.5.12 补）
-  const m = /^(\d+)(?:\.(\d*))?(?:e([+-]?\d+))?$/i.exec(lit)
+  // 整数部分允许为空（1.5.16）：'.9007199254740993e16' 这类小数点开头的科学
+  // 计数文字量旧版因正则要求 ^(\d+) 直接返回 null、绕过 ≥16 位核对，静默舍入
+  // 成 …992（第十一轮复审实证）；放宽后移位逻辑不变（整数部位数按 0 算）
+  const m = /^(\d*)(?:\.(\d*))?(?:e([+-]?\d+))?$/i.exec(lit)
   if (!m) return null
+  if (!m[1] && !m[2]) return null
   const exp = m[3] ? parseInt(m[3], 10) : 0
   if (exp > 400 || exp < -400) return null
   const raw = m[1] + (m[2] || '')
@@ -298,7 +301,21 @@ function evaluate(src, opts) {
             intTaint++
           }
           left = { v: p, pctRaw: null, rad: left.rad || right.rad }
-        } else left = { v: left.v * right.v, pctRaw: null, rad: left.rad || right.rad }
+        } else {
+          const p = left.v * right.v
+          // 混合乘法污染（1.5.16）：一侧是超安全范围整数、另一侧是小数时，旧版
+          // 直接双精度相乘不做核对——1e16×0.1 的舍入无人记录，后续 −1e15 后
+          // 0.125 被当成精确值标 =（第十一轮复审实证）。乘积误差项非零即记
+          // 污染，结算口径与整步守卫一致；0.5 这类精确乘数误差项为 0、不误伤。
+          // 量级守卫：乘积比大整数操作数小 6 个数量级以上时不记——该步舍入的
+          // 绝对误差同比例缩到可忽略，且方程探针 1e-15×1e30 这类合法求值
+          //（结果 1e15 与操作数 1e30 相距 15 个数量级）不能被误杀
+          const bigI = Math.max(Number.isInteger(left.v) ? Math.abs(left.v) : 0, Number.isInteger(right.v) ? Math.abs(right.v) : 0)
+          if (isFinite(p) && p !== 0 && Math.abs(left.v) <= 1e150 && Math.abs(right.v) <= 1e150 &&
+            bigI > 9007199254740991 && Math.abs(p) >= bigI * 1e-6 &&
+            twoProdErr(left.v, right.v) !== 0) intTaint++
+          left = { v: p, pctRaw: null, rad: left.rad || right.rad }
+        }
         // 精确湮灭（1.5.14）：任一乘数确为 0（其自身求值没新增污染）时乘积
         // 恒 0、与另一乘数的污染无关，可清本项内的污染（恢复到 t0，兄弟项的
         // 污染保留）；被污染凑出来的 0 则不清——(1e21+1−1e21)×5 的真值是 5
@@ -314,6 +331,14 @@ function evaluate(src, opts) {
           if (Math.abs(qv) < 1e21) throw new Error('precision')
           intTaint++
         }
+        // 混合除法污染（1.5.16）：超安全范围整数参与、商非整数时，用乘积误差项
+        // 反核 qv×除数 是否还原被除数，还原不了说明商已被舍入，记污染（口径
+        // 同混合乘法，含量级守卫：商小到不足操作数 1e-6 时不记）
+        const bigD = Math.max(Number.isInteger(left.v) ? Math.abs(left.v) : 0, Number.isInteger(right.v) ? Math.abs(right.v) : 0)
+        if (!(Number.isInteger(left.v) && Number.isInteger(right.v) && Number.isInteger(qv)) &&
+          isFinite(qv) && qv !== 0 && Math.abs(qv) <= 1e150 && Math.abs(right.v) <= 1e150 &&
+          bigD > 9007199254740991 && Math.abs(qv) >= bigD * 1e-6 &&
+          (twoProdErr(qv, right.v) !== 0 || qv * right.v !== left.v)) intTaint++
         if (qv === 0 && leftClean) intTaint = t0 // 被除数确为 0 时商恒 0，同理清本项污染
         left = { v: qv, pctRaw: null, rad: left.rad || right.rad }
       }
@@ -341,7 +366,17 @@ function evaluate(src, opts) {
           intTaint++
         }
         lv = s
-      } else lv = op === '+' ? lv + rv : lv - rv
+      } else {
+        const s = op === '+' ? lv + rv : lv - rv
+        // 混合加减污染（1.5.16）：1e16+0.1 里 0.1 被双精度静默吞掉，旧版不做
+        // 核对，−1e16 后得 0 还标精确（第十一轮复审实证）。一侧是超安全范围
+        // 整数时用 TwoSum 误差项核对本步和，非零即记污染、由结尾统一结算；
+        // 量级守卫同混合乘法（和比大整数操作数小 6 个数量级以上不记）
+        const bigI = Math.max(Number.isInteger(lv) ? Math.abs(lv) : 0, Number.isInteger(rv) ? Math.abs(rv) : 0)
+        if (isFinite(s) && bigI > 9007199254740991 && Math.abs(s) >= bigI * 1e-6 &&
+          twoSumErr(lv, op === '+' ? rv : -rv) !== 0) intTaint++
+        lv = s
+      }
       lrad = lrad || right.rad
     }
     return { v: lv, rad: lrad }
@@ -353,7 +388,10 @@ function evaluate(src, opts) {
   // <1e21 的精确显示区时，这个「整数」已被污染，不能当精确值交出去。
   // 加减不做湮灭清除：3^50+1−3^50 与 3^50−3^50 在双精度下长得一模一样、
   // 真值却一个是 1 一个是 0，不可区分时宁可拒绝、不装精确（既定边界）
-  if (intTaint > 0 && Number.isInteger(out) && Math.abs(out) < 1e21) throw new Error('precision')
+  // 结算口径 1.5.16 扩到混合链：污染也可来自大整数×小数步（如 1e16×0.1），
+  // 结果未必是整数（0.125），但只要它会被显示成精确值（dispExact 回读全等），
+  // 同样拦截；本来就是近似显示的结果（1/3 类）不受影响、照常交出
+  if (intTaint > 0 && Math.abs(out) < 1e21 && dispExact(out, formatDisplay(out))) throw new Error('precision')
   return out
 }
 

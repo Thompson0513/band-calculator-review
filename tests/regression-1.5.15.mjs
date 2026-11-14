@@ -85,7 +85,7 @@ function extractFn(name) {
   }
   throw new Error('函数未配平 ' + name)
 }
-const FX = new Function('calc', 'dispNum', extractFn('dm') + '\n' + extractFn('fmtTick') + '\nreturn { dm, fmtTick }')(calc, (p) => String(p).replace(/^-/, '−'))
+const FX = new Function('calc', 'dispNum', extractFn('dm') + '\n' + extractFn('trimSci') + '\n' + extractFn('fmtTick') + '\nreturn { dm, fmtTick }')(calc, (p) => String(p).replace(/^-/, '−'))
 const fmtTick = FX.fmtTick, dm = FX.dm
 
 // ---------- T. 绘图刻度标签 ----------
@@ -105,7 +105,11 @@ eq('T10 微小刻度', fmtTick(0.000012345), '1.2e-5')
   i.plotType = 'quad2'; i.plotVals = { a: '0.001', b: '999999999', c: '0', k: '1', A: '1' }
   i.drawPlot()
   const labs = i.plotLabX.concat(i.plotLabY).map((t) => t.lab)
-  ok('T11 H 例全部刻度标签 ≤8 字（' + labs.join(',') + '）', labs.every((s) => s.length <= 8))
+  // T11 口径 1.5.16 修订：fmtTick 改步长自适应位数（第十一轮第 7 项）后，极端
+  // 窗口的标签位数按可分辨性放宽（硬上限 22 字），原「≤8 字」断言被「≤22 字
+  // ＋X 轴互不相同」取代；该图 Y 轴整带宽仅为量级的 1e-15，15 位有效数字内
+  // 个别标签仍会重复，属双精度边界、已记 BUGLOG
+  ok('T11 H 例刻度标签 ≤22 字且 X 轴互不相同（' + labs.join(',') + '）', labs.every((s) => s.length <= 22) && new Set(i.plotLabX.map((t) => t.lab)).size === i.plotLabX.length)
   ok('T12 H 例仍出图且纵向 ≥10 种', i.view === 'plot' && new Set(i.plotPts.map((p) => p.t)).size >= 10)
 }
 

@@ -558,6 +558,11 @@ function fmtPoly(a, b, c, compact) {
 }
 const FN_TOKENS = ['sin(', 'cos(', 'tan(', 'log(', 'ln(', '√(', '³√(', 'abs(']
 const VAL_END = '0123456789)πe%²!°'
+// 历史读回调代次（1.5.16）：loadHist 发起时领号，saveHist（clearHist 的保存也
+// 走它）时递增作废全部在途读——旧版迟到的读回调会把已清空的旧记录在内存里
+// 复活、或把刚存的新记录冲回旧快照（第十一轮复审以可控延迟的假 storage 时序
+// 模拟实证；真机存储回调是否会如此排序未验证，列真机验收项）
+let histGen = 0
 
 // 系数格编辑：返回新值，或 'NEXT' 表示切到下一格
 function editNum(cur, v, allowDot) {
@@ -608,7 +613,9 @@ function fitResStr(v, cap) {
     let p = 10
     let sci = v.toPrecision(p)
     while (sci.length > cap && p > 5) { p--; sci = v.toPrecision(p) }
-    return sci
+    // 负号过 dm 统一（1.5.16）：toPrecision 直出 ASCII '-'，1.5.15 的全应用
+    // 负号统一漏了这一条分支（第十一轮复审实证）；指数负号保持 ASCII（dm 口径）
+    return dm(sci)
   }
   let p = 12
   while (s.length > cap && p > 7) { p--; s = calc.formatDisplay(Number(v.toPrecision(p))) }
@@ -684,12 +691,16 @@ function rSub(p, q) {
   return { n: n / g, d: d / g }
 }
 // 系数恢复有理数（走 calc.toFraction 的精确门）并精确算出 Δ；恢复失败/超限返回 null
+// exact（1.5.16）：三个系数是否都被 fracIsExact 判为严格恢复——toFraction 的
+// 1e-10 容差会把 0.3333333334 认成 1/3，旧版 quadExact 只查非 null 就按 1/3
+// 构造根式并以等号给出（第十一轮复审实证）；恢复不严格时调用方改 ≈ 或回退
 function quadExact(a, b, c) {
   const A = calc.toFraction(a), B = calc.toFraction(b), C = calc.toFraction(c)
   if (!A || !B || !C || A.n === 0) return null
   const D = rSub(rMul(B, B), rMul(rMul(A, C), { n: 4, d: 1 }))
   if (!D) return null
-  return { A: A, B: B, D: D }
+  const exact = calc.fracIsExact(a, A) && calc.fracIsExact(b, B) && calc.fracIsExact(c, C)
+  return { A: A, B: B, D: D, exact: exact }
 }
 // √|Δ| 精确化简：Δ = n/d（已约分）→ √|Δ| = s√m / d（m 无平方因子）；
 // N = |n|·d 超安全整数或超化简上限（1e12）返回 null；m == 1 表示 |Δ| 是完全平方（根是有理数，不走根式）
@@ -732,15 +743,17 @@ function quadRadStrs(a, b, c, x1, x2) {
   const vPlus = (P + Q * sqm) / R, vMinus = (P - Q * sqm) / R
   const tol = function (u, v) { return Math.abs(u - v) <= 1e-9 * Math.abs(v) + 1e-12 }
   const sPlus = radTerm(P, Q, sq.m, R, 1), sMinus = radTerm(P, Q, sq.m, R, -1)
-  if (tol(vPlus, x1) && tol(vMinus, x2)) return { x1: sPlus, x2: sMinus }
-  if (tol(vMinus, x1) && tol(vPlus, x2)) return { x1: sMinus, x2: sPlus }
+  if (tol(vPlus, x1) && tol(vMinus, x2)) return { x1: sPlus, x2: sMinus, exact: E.exact }
+  if (tol(vMinus, x1) && tol(vPlus, x2)) return { x1: sMinus, x2: sPlus, exact: E.exact }
   return null
 }
 // 根式答案行：精确形在前、同行并列小数（连接号走 eqSign 回读口径）；
 // 塞不下退到只剩精确形（精确形本身就是完整答案），再不行回落 ansStr 纯小数行
-function radAnsStr(name, v, rad, maxLen) {
+function radAnsStr(name, v, rad, maxLen, exact) {
   if (!rad) return ansStr(name, v, maxLen)
-  const fs = (name ? name + ' = ' : '= ') + rad
+  // 系数只是容差内恢复（exact === false）时根式不是原方程的严格精确解，
+  // 连接号按 eqSign 同口径改 ≈（1.5.16）；严格恢复维持等号
+  const fs = (name ? name + (exact === false ? ' ≈ ' : ' = ') : (exact === false ? '≈ ' : '= ')) + rad
   const dec = hardFit(v, Math.max(maxLen - fs.length - 3, 4))
   if (fs.length + 3 + dec.length <= maxLen) return fs + ' ' + calc.eqSign(v, dec) + ' ' + dec
   if (fs.length <= maxLen) return fs
@@ -750,7 +763,9 @@ function radAnsStr(name, v, rad, maxLen) {
 // 与浮点 im 数值自检，对不上作废
 function quadImRad(a, b, c, imVal) {
   const E = quadExact(a, b, c)
-  if (!E || E.D.n >= 0) return null
+  // 系数恢复不严格时虚部根式同样不是严格精确形（1.5.16）：整条回退 cplxStr
+  // 小数行（其连接号走 eqSign），不以等号形式给出近似根式
+  if (!E || E.D.n >= 0 || E.exact === false) return null
   const sq = sqrtRat(E.D)
   if (!sq || sq.m < 2) return null
   let Q = sq.s * E.A.d
@@ -823,12 +838,14 @@ function vertexLine(xv, yv) {
 function rootsLine(r1, r2, rads) {
   const fmt = function (v, rad, cap) {
     if (rad) {
-      const room = cap - rad.length - 3
+      // 系数容差内恢复（rads.exact === false）时根式前加 ≈，不冒充严格精确形（1.5.16）
+      const radTxt = (rads && rads.exact === false) ? '≈' + rad : rad
+      const room = cap - radTxt.length - 3
       if (room >= 4) {
         const decA = hardFit(v, room)
-        if (rad.length + 3 + decA.length <= cap) return (rad + ' ' + calc.eqSign(v, decA) + ' ' + decA).replace(/-/g, '−')
+        if (radTxt.length + 3 + decA.length <= cap) return (radTxt + ' ' + calc.eqSign(v, decA) + ' ' + decA).replace(/-/g, '−')
       }
-      if (rad.length <= cap) return rad.replace(/-/g, '−')
+      if (radTxt.length <= cap) return radTxt.replace(/-/g, '−')
     }
     return pvStr(v, cap)
   }
@@ -927,7 +944,10 @@ function unitCarryExpr(curExpr, proc) {
   if (!curExpr) return proc
   const wrapped = '(' + proc + ')'
   const last = curExpr.slice(-1)
-  return (last && VAL_END.indexOf(last) >= 0) ? curExpr + '×' + wrapped : curExpr + wrapped
+  // 末尾 '.' 视同数值结尾（1.5.16）：'5.' 是完整数值（求值即 5），旧版 VAL_END
+  // 不含 '.'、被当成运算符后直接拼括号，生成 '5.(2÷1000)' 无效式（第十一轮
+  // 复审实证）；补 × 后 '5.×(2÷1000)' 可正常算出 0.01
+  return (last && (VAL_END.indexOf(last) >= 0 || last === '.')) ? curExpr + '×' + wrapped : curExpr + wrapped
 }
 function termNum(a) {
   const t = FD(a)
@@ -949,12 +969,30 @@ function fmtPolyFit(a, b, c) {
   return '整理成 ' + fmtPoly(a, b, c, true) + ' = 0'
 }
 function DA(x) { if (Math.abs(x) < 10000) return DP(x); return x.toPrecision(3).replace(/-/g, '−') }
+// 科学计数串去尾零：'1.0000000e-7' → '1e-7'、'1.2300000e+20' → '1.23e+20'
+function trimSci(s) {
+  const m = /^(-?\d)(?:\.(\d+))?(e.*)?$/.exec(s)
+  if (!m) return s
+  const frac = (m[2] || '').replace(/0+$/, '')
+  return m[1] + (frac ? '.' + frac : '') + (m[3] || '')
+}
 function DP(x) {
   if (typeof x !== 'number' || !isFinite(x)) return FD(x).replace(/-/g, '−')
   const r = Math.round(x * 10000) / 10000
-  let t = String(r)
-  if (t.length > 12) t = r.toPrecision(8)
-  return t.replace(/-/g, '−')
+  if (r === x || (r !== 0 && r !== 1 && r !== -1)) {
+    let t = String(r)
+    if (t.length > 12) t = r.toPrecision(8)
+    return t.replace(/^-/, '−')
+  }
+  // 身份塌缩时改自适应精度（1.5.16）：四位小数口径下，非零小量被舍成 0
+  //（交点 (0, −1e-7) 显示成 (0, 0)）、底数 1.00000001 被舍成 1（标题 y = 1ˣ
+  // 是另一个函数），第十一轮复审实证。这两种塌缩才改走原值：字符串 ≤12 字
+  // 直接用原值，更长或科学计数形用 8 位有效数字去尾零；其余值（如顶点
+  // −0.5159）维持 4 位小数的既定简洁口径不变。负号只换首位——科学计数
+  // 的指数负号保持 ASCII，与 formatDisplay 口径一致
+  let t = String(x)
+  if (t.length > 12 || t.includes('e')) t = trimSci(x.toPrecision(8))
+  return t.replace(/^-/, '−')
 }
 // 把纯文本结果放回算式时只换开头的负号：科学计数法的指数负号（如 1e-7）
 // 必须是 ASCII '-'，否则再求值会被当成 1×e−7 算错
@@ -1019,13 +1057,25 @@ function niceStep(span, target) {
   const s = n < 1.5 ? 1 : (n < 3.5 ? 2 : (n < 7 ? 5 : 10))
   return s * mag
 }
-function fmtTick(v) {
+function fmtTick(v, step) {
   const s = calc.formatPlain(v)
   if (s.length <= 6) return dispNum(s)
   // 大/小量级刻度改科学计数（1.5.15）：极端窗口下全位整数标签长达 21 字，塞进
-  // 24–26px 的刻度格必然重叠成一团看不清；2 位有效数字足够读尺度（步长本身是
-  // 整步）。用 toExponential 强制指数形——toPrecision 对 1e-5 量级会退回小数长串
-  return dispNum(v.toExponential(1).replace(/\.0e/, 'e'))
+  // 24–26px 的刻度格必然重叠成一团看不清；用 toExponential 强制指数形——
+  // toPrecision 对 1e-5 量级会退回小数长串
+  // 有效数字位数随刻度步长自适应（1.5.16）：1.5.15 一律 2 位，在 1e9 量级、
+  // 步长 2e-4 的窗口下标签末位单位（1e8）远粗于步长，10 个刻度全塌成同一个
+  // '1e+9'（第十一轮复审实证）。位数按「末位单位 ≤ 步长」反推：d ≥ E+1−log10(step)
+  //（E 为量级指数），无步长信息时维持 2 位；上限 15 位（双精度可靠十进制
+  // 位数内；1e9 整数边界处 E 跳变、需 14 位才分得开，13 位不够）；尾零去掉。
+  // 纯文本仍 ≤6 字、常规科学标签仍是 2 位短标签（如 −2.5e+20），不回归；
+  // 标签硬上限 22 字（符号＋16 字尾数＋5 字指数），静态宽度复核见 BUGLOG
+  let digs = 2
+  if (typeof step === 'number' && step > 0 && isFinite(step) && v !== 0 && isFinite(v)) {
+    const E = Math.floor(Math.log10(Math.abs(v)))
+    digs = Math.min(15, Math.max(2, Math.ceil(E + 1 - Math.log10(step))))
+  }
+  return dispNum(trimSci(v.toExponential(digs - 1)))
 }
 function TERM(coef, suffix, first) {
   if (coef === 0) return ''
@@ -1246,10 +1296,12 @@ export default {
 
   loadHist() {
     const self = this
+    const gen = ++histGen
     try {
       storage.get({
         key: 'calc_hist',
         success: function (data) {
+          if (gen !== histGen) return // 代次已作废（期间发生过保存/清空）：丢弃这份旧快照
           try {
             const arr = JSON.parse(data || '[]')
             if (Array.isArray(arr)) {
@@ -1275,6 +1327,7 @@ export default {
     } catch (e) {}
   },
   saveHist() {
+    histGen++ // 作废全部在途读回调，防旧快照覆盖刚保存的新历史（见 histGen 注）
     try { storage.set({ key: 'calc_hist', value: JSON.stringify(this.hist) }) } catch (e) {}
   },
 
@@ -1569,6 +1622,10 @@ export default {
       let seg = this.expr.split(/[+\-−×÷()^]/).pop()
       if (seg.indexOf('.') >= 0) return
       if (!last || '+-−×÷(^'.indexOf(last) >= 0) this.expr += '0.'
+      // 小数点键补隐式乘法（1.5.16）：前一字符是已完成数值项（) ² ! π % ° e）
+      // 时，旧版直接拼 '.' 生成 '(2).5' 这类无效式（第十一轮复审实证）；数字键
+      // 早有补 × 的口径，小数点键同规则补 '×0.'，与数字键产物风格一致
+      else if (VAL_END.indexOf(last) >= 0 && '0123456789'.indexOf(last) < 0) this.expr += '×0.'
       else this.expr += '.'
     } else if (v === '(' || v === 'π' || v === 'e') {
       this.appendTok(v)
@@ -1652,7 +1709,14 @@ export default {
     const v = parseFloat(this.unitVal)
     if (this.unitVal === '' || this.unitVal === '-' || isNaN(v)) { this.unitRes = ''; this.unitResPx = 27; return }
     const r = calc.convertUnit(this.catIdx, this.unitFromId, this.unitToId, v)
-    this.unitRes = isNaN(r) ? '' : calc.formatDisplay(r)
+    if (isNaN(r)) { this.unitRes = '' }
+    else if (r !== 0 && calc.formatDisplay(r) === '0') {
+      // 极小非零结果（1.5.16）：cleanNum 的相消尾巴判别会把 1.65e-16 这类真值
+      // 归零（既定边界），旧版单位页照样显示裸 '0'、连近似标记都没有（第十一
+      // 轮复审实证）。改走科学计数并带 ≈，让学生知道这不是精确的 0
+      this.unitRes = '≈ ' + dispNum(r.toExponential(2).replace(/\.?0+e/, 'e'))
+    }
+    else this.unitRes = calc.formatDisplay(r)
     this.unitResPx = unitPxOf(this.unitRes === '' ? '—' : this.unitRes)
   },
   pickUnit(target) {
@@ -1814,8 +1878,8 @@ export default {
       // 无理根先给根式精确形（卡西欧方程模式口径）；恢复不出根式时 rads 为 null，走既有分数/小数行
       const rads = quadRadStrs(a, b, c, r.x1, r.x2)
       this.qLines = ['判别式 Δ ' + calc.eqSign(r.disc) + ' ' + fitResStr(r.disc, 13) + ' > 0',
-        rads ? radAnsStr('x1', r.x1, rads.x1, 28) : ansStr('x1', r.x1, 28),
-        rads ? radAnsStr('x2', r.x2, rads.x2, 28) : ansStr('x2', r.x2, 28)]
+        rads ? radAnsStr('x1', r.x1, rads.x1, 28, rads.exact) : ansStr('x1', r.x1, 28),
+        rads ? radAnsStr('x2', r.x2, rads.x2, 28, rads.exact) : ansStr('x2', r.x2, 28)]
     }
     else if (r.type === 'one') this.qLines = ['判别式 Δ = 0（两根相等）', ansStr('x', r.x, 28)]
     else if (r.type === 'complex') {
@@ -1934,7 +1998,10 @@ export default {
     // 宽容裁掉尾部运算符——主计算器无妨，但方程里「x+=3」会被当成 x=3 静默解掉
     // 另一个问题（自查实证，2x+=7、x−=3 同病）。括号未闭合的宽容（自动补）保留，
     // 中间的双运算符（x++2 的一元 +）是合法数学写法、不拦
-    const sideDangling = (raw) => raw.split('=').some((sg) => /[+\-−×÷^(]$/.test(sg.trim()))
+    // 字符集 1.5.16 补 ASCII '/'：方程键盘的除号键就是 '/'，1.5.15 只拦了 '÷'，
+    // '3x=5/' 仍被 evalSide 裁尾后改题求解（第十一轮复审实证）；与 evalSide 的
+    // 裁尾集合 '+-*/^(' 对齐
+    const sideDangling = (raw) => raw.split('=').some((sg) => /[+\-−×÷\/^(]$/.test(sg.trim()))
     if (((raw1 + raw2).indexOf('=') >= 0 || /[xy]/.test(raw1 + raw2)) && (sideDangling(raw1) || sideDangling(raw2))) {
       this.eqLines = ['算式有问题，检查括号和符号']
       return
@@ -2044,9 +2111,17 @@ export default {
           // 0.1+0.2=0.3 这类经典残差不受影响
           const litRe = /^[+\-−]?(\d+\.?\d*|\.\d+)([eE][+\-−]?\d+)?$/
           const bothLit = litRe.test(parts[0].trim()) && litRe.test(parts[1].trim())
+          // 零侧地板收紧（1.5.16）：6e-17 地板本是给相消尾巴的（0.1+0.2−0.3
+          // = 5.55e-17），但无减法的式子根本不存在相消——0+0.00000000000000001
+          // 里的 1e-17 是用户写明的真值，旧版一律吸收、误判恒等式（第十一轮
+          // 复审实证）。收紧后：一侧含二元减法（值后跟 −/-；科学计数指数里的
+          // 负号先剥掉再看）才允许 ≤6e-17 的尾巴吸收；否则零侧必须全等
+          //（地板 0）。0.1+0.2−0.3=0 等经典相消不受影响
+          const sideHasSub = (s) => /[0-9)π%²!°][-−]/.test(String(s).replace(/\d[eE][+\-−]?\d+/g, '#'))
+          const tailOk = sideHasSub(parts[0]) || sideHasSub(parts[1])
           const isEq = bothLit ? lv === rv : ((lv !== 0 && rv !== 0)
             ? Math.abs(lv - rv) <= 3 * Number.EPSILON * scMax
-            : scMax <= 6e-17)
+            : (tailOk ? scMax <= 6e-17 : lv === rv))
           if (isEq) this.eqLines = ['两边相等：恒等式']
           else {
             let ll = ansStr('左边', lv, 26), rl = ansStr('右边', rv, 26)
@@ -2087,7 +2162,10 @@ export default {
       const a3 = (g3 + gm3 - 2 * g0) / 18
       // 校验探针（1.5.10/1.5.12）：±2/±4 与半整数点 ±0.5…±3.5（半整数点专防
       // 「在全部整数探针点恰好为零」的构造多项式）；探针取值抛错按不支持处理
-      const chkT = [2, -2, 4, -4, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.5, -3.5], chkV = []
+      // 1.5.16 再加非 0.5 倍数点 0.3/0.7：旧探针全是 0.5 的倍数，sin(720x) 在
+      // 这些点上恒为 0（720×0.5k = 360k 度），曾被误判恒等式（第十一轮复审
+      // 实证，接口层构造）；0.3 处 sin(216°) ≠ 0，拟合校验当场露馅
+      const chkT = [2, -2, 4, -4, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.5, -3.5, 0.3, -0.3, 0.7, -0.7], chkV = []
       try {
         for (const t of chkT) { chkV.push(g(t)) }
       } catch (e3) {
@@ -2162,8 +2240,8 @@ export default {
       if (r.type === 'two') {
         const rads = quadRadStrs(a, b, c, r.x1, r.x2)
         this.eqLines = [head, '判别式 Δ ' + calc.eqSign(r.disc) + ' ' + fitResStr(r.disc, 13) + ' > 0',
-          rads ? radAnsStr('x1', r.x1, rads.x1, 28) : ansStr('x1', r.x1, 28),
-          rads ? radAnsStr('x2', r.x2, rads.x2, 28) : ansStr('x2', r.x2, 28)]
+          rads ? radAnsStr('x1', r.x1, rads.x1, 28, rads.exact) : ansStr('x1', r.x1, 28),
+          rads ? radAnsStr('x2', r.x2, rads.x2, 28, rads.exact) : ansStr('x2', r.x2, 28)]
       }
       else if (r.type === 'one') this.eqLines = [head, '判别式 Δ = 0（两根相等）', ansStr('x', r.x, 28)]
       else if (r.type === 'complex') this.eqLines = [head, '判别式 Δ ' + calc.eqSign(r.disc) + ' ' + fitResStr(r.disc, 13) + ' < 0', '无实数根']
@@ -2346,9 +2424,37 @@ export default {
     const mags = raw.map(function (pt) { return Math.abs(pt.y) }).sort(function (p, q) { return p - q })
     const med = mags.length ? mags[Math.floor(mags.length / 2)] : 0
     const cap = Math.max(1e6, 200 * med)
+    // 边沿单调豁免（1.5.16）：中位数上限是为压反比例/tan 的渐近尖峰（尖峰是夹在
+    // 曲线中间的大值段）；指数曲线尾部的大值段贴着采样区边沿且单调，是合法曲线
+    // 不是尖峰——旧版把 10ˣ 在 ±8 窗口的尾部（y 达 1e8）整段砍掉、图右侧空出
+    // 一截（第十一轮复审实证：91 个采样点只画 79 个）。判据：超 cap 的连续段
+    // 若贴住采样首/尾、且段内 |y| 单调（同向变化），整段豁免；中间段照旧滤，
+    // 渐近尖峰（含 |y| 先升后降、或正负翻转的段）不受影响
+    const overCap = raw.map(function (pt) { return Math.abs(pt.y) > cap })
+    const exempt = []
+    for (let i = 0; i < raw.length; i++) exempt.push(false)
+    {
+      let i = 0
+      while (i < raw.length) {
+        if (!overCap[i]) { i++; continue }
+        let j = i
+        while (j + 1 < raw.length && overCap[j + 1]) j++
+        if (i === 0 || j === raw.length - 1) {
+          let inc = true, dec = true
+          for (let k = i + 1; k <= j; k++) {
+            const d = Math.abs(raw[k].y) - Math.abs(raw[k - 1].y)
+            if (d > 0) dec = false
+            if (d < 0) inc = false
+          }
+          if (inc || dec) for (let k = i; k <= j; k++) exempt[k] = true
+        }
+        i = j + 1
+      }
+    }
     const pts = []
-    for (const pt of raw) {
-      if (Math.abs(pt.y) > cap) continue
+    for (let i2 = 0; i2 < raw.length; i2++) {
+      const pt = raw[i2]
+      if (overCap[i2] && !exempt[i2]) continue
       pts.push(pt)
       if (pt.y < ymin) ymin = pt.y
       if (pt.y > ymax) ymax = pt.y
@@ -2390,7 +2496,7 @@ export default {
       if (v === 0) continue
       const cx = px(v)
       tX.push({ ml: cx, mt: baseT - 3 })
-      if (cx >= 14 && cx <= 298) lX.push({ lab: fmtTick(v), ll: cx - 12, lt: baseT <= H - 24 ? baseT + 4 : baseT - 15, ta: 'center' })
+      if (cx >= 14 && cx <= 298) lX.push({ lab: fmtTick(v, stepX), ll: cx - 12, lt: baseT <= H - 24 ? baseT + 4 : baseT - 15, ta: 'center' })
     }
     for (let k = Math.ceil(ymin / stepY); k <= Math.floor(ymax / stepY); k++) {
       const v = Math.round(k * stepY * 1e10) / 1e10
@@ -2398,8 +2504,8 @@ export default {
       const cy = py(v)
       tY.push({ ml: baseL - 3, mt: cy })
       if (cy >= 6 && cy <= 282) {
-        if (baseL >= 36) lY.push({ lab: fmtTick(v), ll: baseL - 31, lt: cy - 6, ta: 'right' })
-        else lY.push({ lab: fmtTick(v), ll: baseL + 5, lt: cy - 6, ta: 'left' })
+        if (baseL >= 36) lY.push({ lab: fmtTick(v, stepY), ll: baseL - 31, lt: cy - 6, ta: 'right' })
+        else lY.push({ lab: fmtTick(v, stepY), ll: baseL + 5, lt: cy - 6, ta: 'left' })
       }
     }
     if (this.plotAxisL >= 0 && this.plotAxisT >= 0) lX.push({ lab: '0', ll: this.plotAxisL + 4, lt: this.plotAxisT + 4, ta: 'left' })
