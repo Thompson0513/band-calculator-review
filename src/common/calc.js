@@ -224,11 +224,12 @@ function evaluate(src, opts) {
   function peek() { return pos < toks.length ? toks[pos] : null }
   function next() { return toks[pos++] }
 
-  // atom：数字/常数/括号/函数调用，返回 {v, rad}（rad = 子表达式里出现过 °，值已是弧度）
+  // atom：数字/常数/括号/函数调用，返回 {v, rad, dirty}（rad = 子表达式里出现过 °，值已是弧度；
+  // dirty = 误差来源追踪标记（1.5.19）：值在求值链中经历过不精确的加减步，见 parseExprW）
   function parseAtom() {
     const tk = next()
     if (!tk) throw new Error('unexpected end')
-    if (tk.t === 'num') return { v: tk.v, rad: false }
+    if (tk.t === 'num') return { v: tk.v, rad: false, dirty: false }
     if (tk.t === '(') {
       const r = parseExprW()
       const close = next()
@@ -241,7 +242,7 @@ function evaluate(src, opts) {
       const arg = parseExprW()
       const close = next()
       if (!close || close.t !== ')') throw new Error('missing )')
-      return { v: applyFn(tk.v, arg.v, deg, arg.rad), rad: false }
+      return { v: applyFn(tk.v, arg.v, deg, arg.rad), rad: false, dirty: false }
     }
     throw new Error('unexpected ' + tk.t)
   }
@@ -273,7 +274,7 @@ function evaluate(src, opts) {
       // 5.8e9 的假值（ChatGPT 第十份报告实证）；归约后 rad 恰为 π/2、判据命中
       else if (op === '°') { pctRaw = null; v = (v % 360) * Math.PI / 180; rad = true }
     }
-    return { v: v, pctRaw: pctRaw, rad: rad }
+    return { v: v, pctRaw: pctRaw, rad: rad, dirty: base.dirty }
   }
   // power：一元符号 + ^ （右结合，符号结合力低于 ^：−2^2 = −4）
   function parsePower() {
@@ -281,7 +282,7 @@ function evaluate(src, opts) {
     if (tk && (tk.t === '-' || tk.t === '+')) {
       next()
       const f = parsePower()
-      return { v: tk.t === '-' ? -f.v : f.v, pctRaw: null, rad: f.rad }
+      return { v: tk.t === '-' ? -f.v : f.v, pctRaw: null, rad: f.rad, dirty: f.dirty }
     }
     const tB = intTaint
     const base = parsePostfix()
@@ -310,13 +311,14 @@ function evaluate(src, opts) {
       // 新增污染为准（被污染凑出来的 0/1 不算）
       if (v === 1 && ((exp.v === 0 && expClean) || (base.v === 1 && baseClean))) intTaint = tB
       else if (v === 0 && base.v === 0 && baseClean) intTaint = tB
-      return { v: v, pctRaw: null, rad: base.rad || exp.rad }
+      return { v: v, pctRaw: null, rad: base.rad || exp.rad, dirty: base.dirty || exp.dirty }
     }
     return base
   }
   function parseTerm() {
     const t0 = intTaint
     let left = parsePower()
+    let ldirty = left.dirty
     let single = true
     while (peek() && (peek().t === '*' || peek().t === '/')) {
       const op = next().t
@@ -377,17 +379,23 @@ function evaluate(src, opts) {
         if (qv === 0 && leftClean) intTaint = t0 // 被除数确为 0 时商恒 0，同理清本项污染
         left = { v: qv, pctRaw: null, rad: left.rad || right.rad }
       }
+      // 误差来源追踪透传（1.5.19）：乘除本身不吸附，但 dirty 标记按来源
+      // 传递（任一操作数 dirty 则结果 dirty），供后续加减步判定吸附资格
+      ldirty = ldirty || right.dirty
+      left.dirty = ldirty
     }
-    return { v: left.v, pctRaw: single ? left.pctRaw : null, rad: left.rad }
+    return { v: left.v, pctRaw: single ? left.pctRaw : null, rad: left.rad, dirty: ldirty }
   }
   function parseExprW() {
     let left = parseTerm()
     let lv = left.v
     let lrad = left.rad
+    let ldirty = left.dirty
     while (peek() && (peek().t === '+' || peek().t === '-')) {
       const op = next().t
       const right = parseTerm()
       let rv = right.v
+      const rdirty = right.dirty
       if (right.pctRaw !== null) rv = lv * right.pctRaw / 100
       // 整数加减精确性守卫（1.5.13）：9007199254740992+1 旧版静默吞掉 +1、结果还
       // 显示精确等号，(9007199254740992+1)−9007199254740992 因此得 0（真值 1）；
@@ -396,31 +404,44 @@ function evaluate(src, opts) {
       // 精确区静默给 0（真值 1，第十份报告实证），结尾按污染结算
       if (Number.isInteger(lv) && Number.isInteger(rv)) {
         const s = op === '+' ? lv + rv : lv - rv
-        if (isFinite(s) && twoSumErr(lv, op === '+' ? rv : -rv) !== 0) {
+        const errI = twoSumErr(lv, op === '+' ? rv : -rv)
+        if (isFinite(s) && errI !== 0) {
           if (Math.abs(s) < 1e21) throw new Error('precision')
           intTaint++
         }
+        // 守卫逻辑不变，仅顺带线程化 dirty 标记（1.5.19，规则与下方同款）
+        ldirty = ldirty || rdirty || errI !== 0
         lv = s
       } else {
         const s = op === '+' ? lv + rv : lv - rv
+        const errS = twoSumErr(lv, op === '+' ? rv : -rv)
         // 混合加减污染（1.5.16）：1e16+0.1 里 0.1 被双精度静默吞掉，旧版不做
         // 核对，−1e16 后得 0 还标精确（第十一轮复审实证）。一侧是超安全范围
         // 整数时用 TwoSum 误差项核对本步和，非零即记污染、由结尾统一结算；
         // 量级守卫同混合乘法（和比大整数操作数小 6 个数量级以上不记）
         const bigI = Math.max(Number.isInteger(lv) ? Math.abs(lv) : 0, Number.isInteger(rv) ? Math.abs(rv) : 0)
         if (isFinite(s) && bigI > 9007199254740991 && Math.abs(s) >= bigI * 1e-6 &&
-          twoSumErr(lv, op === '+' ? rv : -rv) !== 0) intTaint++
+          errS !== 0) intTaint++
         // 抵消残差吸附（1.5.18，B-01）：0.1+0.2−0.3 = 5.55e-17 级残差的源头
         // 是加减步操作数自身携带的舍入（相对操作数尺度 ~2^-53/步），显示层
         // 无状态判别分不开它与同量级真商（第十二轮复审实证），必须在求值层
         // 按相对尺度吸附：结果非零、却只有操作数尺度 2^-50（≈8 ulp）量级
         // 时判为抵消残差、归零。乘除定标不吸附；同尺度合法小量（1e-17+
         // 1e-17，结果与操作数同量级）与 0+x（结果即操作数本身）不受影响
-        lv = (s !== 0 && Math.abs(s) <= Math.max(Math.abs(lv), Math.abs(rv)) * Math.pow(2, -50)) ? 0 : s
+        // 误差来源追踪（1.5.19，第十三轮复审 P1）：纯阈值吸附误吞用户手打
+        // 字面量的精确小差（1.0000000000000002−1 经 Sterbenz 精确可得
+        // 2.22e-16、被旧版归零）。追加来源条件：本步 dirty 才可吸附——
+        // dirty 的定义是本步 TwoSum 误差非零（这步本身算不精确）、或任一
+        // 操作数已 dirty（误差沿括号/一元/乘除透传，字面量与精确步恒
+        // clean）。0.1+0.2 首步误差非零 → 链条 dirty → 后续 −0.3 的残差
+        // 照旧吸附；全程精确的链条任何小差值都不许动
+        const stepDirty = errS !== 0 || ldirty || rdirty
+        lv = (stepDirty && s !== 0 && Math.abs(s) <= Math.max(Math.abs(lv), Math.abs(rv)) * Math.pow(2, -50)) ? 0 : s
+        ldirty = stepDirty
       }
       lrad = lrad || right.rad
     }
-    return { v: lv, rad: lrad }
+    return { v: lv, rad: lrad, dirty: ldirty }
   }
   const out = parseExprW().v
   if (pos !== toks.length) throw new Error('trailing')
@@ -536,6 +557,27 @@ function isTinyQuotient(v) {
   return false
 }
 
+// 精确微差判别（1.5.19 同版修订）：v 的二进制尾数是否「短」——Sterbenz
+// 相近数相减的精确差（1.0000000000000002−1 = 2^-52 等）是 2 的整数次幂
+// 或其短整数倍，尾数有效位极少；浮点尾巴（sin π = 1.2246…e-16）与无理
+// 数缩放的尾数则占满 53 位。判定式：x = |v| 反复 ×2/÷2（精确缩放）归
+// 一化到 [1, 2)，m = round(x·2^52) 为尾数整数，m 反复 ÷2 去尽尾零后
+// m < 2^8 = 256 ⇔ 有效位 ≤8 位 ⇔ 判真。实测：三个精确差族（2^-52、
+// 2^-54、2^-55）有效位均为 1；sin π 尾巴、键入字面量 1e-17、√2×10⁻¹⁷
+// 均为 53 位；20 万个随机双精度差零命中。与 isTinyQuotient 同哲学：
+// cleanNum 本身不动，本判别只供 formatDisplay 在显示层救援——求值层
+// taint 已先行决定哪些残差是尾巴（dirty 链吸附归零），到达显示层的
+// 非零短尾数值是全程精确的真差，不许再被 12 位判别吞成 0
+function isShortMantissa(v) {
+  let x = Math.abs(v)
+  if (x === 0 || !isFinite(x)) return false
+  while (x >= 2) x /= 2
+  while (x < 1) x *= 2
+  let m = Math.round(x * Math.pow(2, 52))
+  while (m % 2 === 0) m /= 2
+  return m < 256
+}
+
 function formatDisplay(v) {
   const s = formatPlain(v)
   if (s === '错误' || s === '溢出') return s
@@ -545,6 +587,12 @@ function formatDisplay(v) {
   // 12 位有效数字课本式显示。尾巴与无理数缩放过不了判别、仍显示 0；
   // formatPlain 不走救援（接力/内部表示口径不变）
   if (s === '0' && v !== 0 && isFinite(v) && isTinyQuotient(v)) return dispMinus(sciStr(String(parseFloat(v.toPrecision(12)))))
+  // 精确微差救援（1.5.19 同版修订）：求值层 taint 保住的手打字面量精确
+  // 差（2^-52 级）真值已对，却仍被 cleanNum 的相对 1e-13 判别在显示层
+  // 归零（第十三轮复审 P1 的显示层残余）；短尾数判别过关的按 12 位有
+  // 效数字课本式显示。sin π 尾巴与无理数缩放尾数占满 53 位、过不了
+  // 判别，仍显示 0；formatPlain 同样不走本救援（内部表示口径不变）
+  if (s === '0' && v !== 0 && isFinite(v) && isShortMantissa(v)) return dispMinus(sciStr(String(parseFloat(v.toPrecision(12)))))
   // 科学计数改课本式（1.5.17）：sciStr 换记法外壳，dispMinus 只收尾数负号
   if (s.indexOf('e') >= 0 || s.indexOf('E') >= 0) return dispMinus(sciStr(s))
   const neg = s[0] === '-'

@@ -120,7 +120,7 @@ eq('3a sin(180°) 尾巴仍归零', FD(E('sin(180)')), '0')
 eq('3b cos(90°) 尾巴仍归零', FD(E('cos(90)')), '0')
 eq('3c 裸 sin 尾巴 formatDisplay 仍 0（判别不放行）', FD(Math.sin(Math.PI)), '0')
 eq('3d 裸 cos 尾巴 formatDisplay 仍 0', FD(Math.cos(Math.PI / 2)), '0')
-eq('3e 裸残差 formatDisplay 仍 0', FD(0.1 + 0.2 - 0.3), '0')
+eq('3e 【1.5.19 同版修订】裸残差双精度值 = 2^-54、与手打精确差同值，formatDisplay 按短尾数救援显示（旧期望 0；尾巴防线在求值层 taint、经 evaluate 的同式显示仍 0，见 regression-1.5.19 §7e）', FD(0.1 + 0.2 - 0.3), '5.55111512313×10⁻¹⁷')
 eq('3f cleanNum 直钉保持：(1/3)*1e-15 仍 0（1.5.12 口径）', calc.cleanNum((1 / 3) * 1e-15), 0)
 eq('3g cleanNum 直钉保持：sin 尾巴原值仍 0', calc.cleanNum(1.2246467991473532e-16), 0)
 eq('3h 显示层分层：(1/3)*1e-15 经救援显示', FD((1 / 3) * 1e-15), '3.33333333333×10⁻¹⁶')
@@ -137,10 +137,10 @@ eq('4c C2 显示', FD(E('1×10⁻¹⁶÷3×3')), '1×10⁻¹⁶')
   const h = drawPlot('quad2', { a: '0.001', b: '999999999', c: '0', k: '1', A: '1' })
   const ylabs = h.plotLabY.map((t) => t.lab)
   const xlabs = h.plotLabX.map((t) => t.lab)
-  ok('5a H 例 Y 标签两两不同（' + ylabs.join(',') + '）', new Set(ylabs).size === ylabs.length && ylabs.length >= 2)
+  ok('5a 【1.5.19 同版修订二】H 例 Y 标签两两不同（' + ylabs.join(',') + '）（旧期望 ≥2 个长标签；短标签封顶后两刻度差 1e6 远低于 5 位分辨率 1e16、不可分辨，去重＋减量兜底收口为 1 个 −2.5×10²⁰，见 regression-1.5.19 §9 头注）', new Set(ylabs).size === ylabs.length && ylabs.length === 1)
   ok('5b H 例 X 标签两两不同', new Set(xlabs).size === xlabs.length)
   ok('5c H 例全部标签 ≤22 字', ylabs.concat(xlabs).every((s) => s.length <= 22))
-  eq('5d H 例刻度记号随最终步长（tickY 与 labY 同数）', h.plotTickY.length, h.plotLabY.length)
+  eq('5d 【1.5.19 同版修订二】H 例刻度记号/标签数（旧期望 tickY 与 labY 同数；减量兜底后 tick 记号仍随最终步长 2 个、标签减为 1 个）', h.plotTickY.length + '/' + h.plotLabY.length, '2/1')
 }
 {
   // 正常参数基线（1.5.17 实测）：首轮即定、计数与标签逐字不变
@@ -154,7 +154,7 @@ eq('4c C2 显示', FD(E('1×10⁻¹⁶÷3×3')), '1×10⁻¹⁶')
 }
 
 // ---------- 6) B-03 刻度长度硬上限 ----------
-eq('6a fmtTick(−MAX_VALUE, 1e292) 降位后 22 字', fmtTick(-Number.MAX_VALUE, 1e292), '−1.7976931348623×10³⁰⁸')
+eq('6a 【1.5.19 同版修订二】fmtTick(−MAX_VALUE, 1e292)（旧期望 −1.7976931348623×10³⁰⁸、22 字；极端尺度封顶 5 位后 13 字，见 regression-1.5.19 §9 头注）', fmtTick(-Number.MAX_VALUE, 1e292), '−1.7977×10³⁰⁸')
 {
   const vs = [Number.MAX_VALUE, -Number.MAX_VALUE, 1e308, -1e308, 1.5e300, -9.99e99, 1e-300, -1e-300, 5e-324, -5e-324, 1.23456789012345e250, -7.7e-77, 9.99999999999999e20, -249999999500000000000]
   const ss = [undefined, 1e292, 1e-290, 5e-324, 1e15, 0.001, 3]
@@ -165,7 +165,7 @@ eq('6a fmtTick(−MAX_VALUE, 1e292) 降位后 22 字', fmtTick(-Number.MAX_VALUE
   }
   ok('6b 极端量级扫掠全 ≤22 字（最坏 ' + worst + '：' + worstCase + '）', worst <= 22)
 }
-eq('6c 常规最坏标签 21 字不变', fmtTick(9.99999999999999e20, 1e6).length, 21)
+eq('6c 【1.5.19 同版修订二】常规最坏标签（旧期望 21 字 → 6 字：极端尺度封顶 5 位，见 regression-1.5.19 §9 头注）', fmtTick(9.99999999999999e20, 1e6).length, 6)
 eq('6d 常规标签不变', fmtTick(-249999999500000000000), '−2.5×10²⁰')
 
 // ---------- 7) 边界扫掠（非有限/溢出/下溢/除零/非法式代表例） ----------

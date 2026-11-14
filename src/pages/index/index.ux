@@ -1116,6 +1116,15 @@ function fmtTick(v, step) {
   if (typeof step === 'number' && step > 0 && isFinite(step) && v !== 0 && isFinite(v)) {
     const E = Math.floor(Math.log10(Math.abs(v)))
     digs = Math.min(15, Math.max(2, Math.ceil(E + 1 - Math.log10(step))))
+    // 极端尺度短标签封顶（1.5.19 同版修订二，B-03 实际布局半）：|E|≥10
+    // （|v|≥1e10 或 0<|v|<1e-10）时有效数字封顶 5 位。H 例旧版按步长反推
+    // 到 15 位：Y 标签 −2.499999995×10²⁰（18 字）/−2.49999999499999×10²⁰
+    // （23 字）、X 标签 15 字，塞进 24–26px 定宽标签框逐字竖排、互相重叠
+    // 不可读（velasim 实测）。封顶后 −2.5×10²⁰ 式短标签（≤14 字）；该尺
+    // 度下相邻刻度在 5 位精度不可分辨时，由 buildPlot 的去重翻步长与减
+    // 量兜底收口（标签宁少勿重复）。中等尺度（|E|<10）维持 1.5.16 的步
+    // 长自适应（1e9 量级、步长 2e-4 的相邻可分辨用例不受影响）
+    if (Math.abs(E) >= 10 && digs > 5) digs = 5
   }
   const render = function () { return dispNum(calc.sciStr(trimSci(v.toExponential(digs - 1)))) }
   let out = render()
@@ -2574,7 +2583,15 @@ export default {
     let tX = [], tY = [], lX = [], lY = []
     for (let iter = 0; iter < 60; iter++) {
       tX = []; lX = []
+      // 推进守卫（1.5.19 同版修订）：极端量程下刻度索引 |k| 可达 2^53 以上
+      //（二次函数顶点在 1e17 量级时 X 轴 k≈5e16），双精度下 k++ 不再前进、
+      // 旧版原地死循环（实测 8 秒不返回）；推进值不严格变大即跳出，另设
+      // 迭代上限兜底，保证任何输入下有界返回。正常量程 k 严格递增、计数
+      // 约 10 个，守卫永不触发、行为逐字不变
+      let prevKX = null, guardX = 0
       for (let k = Math.ceil(x0 / stepX); k <= Math.floor(x1 / stepX); k++) {
+        if (k === prevKX || ++guardX > 1000) break
+        prevKX = k
         const v = Math.round(k * stepX * 1e10) / 1e10
         if (v === 0) continue
         const cx = px(v)
@@ -2584,9 +2601,20 @@ export default {
       if (!labDup(lX) || lX.length <= 2) break
       stepX *= 2
     }
+    // 退出后仍重复的兜底（1.5.19，B-02 补漏）：旧退出条件在标签只剩 2 个
+    // 时无条件收工，哪怕两个标签文本仍相同（第十三轮复审静态查出）；60
+    // 次迭代耗尽同理。宁可只留 1 个标签（取中点那个、量程位置最有代表
+    // 性），也不许把重复标签当成功结果交付
+    if (labDup(lX)) lX = [lX[Math.floor(lX.length / 2)]]
     for (let iter = 0; iter < 60; iter++) {
       tY = []; lY = []
+      // 推进守卫（1.5.19 同版修订）：同 X 轴——顶点纵坐标在 1e30 量级且窗
+      // 内扁平时 Y 轴步长只有 2e-4、刻度索引 k≈−5e33，k++ 不再前进、旧版
+      // 死循环（注入计数实证：Y 循环 300 万次不退出，X 循环仅 11 次）
+      let prevKY = null, guardY = 0
       for (let k = Math.ceil(ymin / stepY); k <= Math.floor(ymax / stepY); k++) {
+        if (k === prevKY || ++guardY > 1000) break
+        prevKY = k
         const v = Math.round(k * stepY * 1e10) / 1e10
         if (v === 0) continue
         const cy = py(v)
@@ -2599,6 +2627,7 @@ export default {
       if (!labDup(lY) || lY.length <= 2) break
       stepY *= 2
     }
+    if (labDup(lY)) lY = [lY[Math.floor(lY.length / 2)]] // 同 X 轴兜底（1.5.19）
     if (this.plotAxisL >= 0 && this.plotAxisT >= 0) lX.push({ lab: '0', ll: this.plotAxisL + 4, lt: this.plotAxisT + 4, ta: 'left' })
     this.plotTickX = tX
     this.plotTickY = tY
