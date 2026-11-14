@@ -32,8 +32,23 @@ function tokenize(src) {
           j = k
         }
       }
-      const v = parseFloat(s.slice(i, j))
+      const lit = s.slice(i, j)
+      const v = parseFloat(lit)
       if (isNaN(v)) throw new Error('bad number')
+      // 纯整数文字量的精确性检查（1.5.10）：9007199254740993 这类整数在解析时已被舍入成
+      // 9007199254740992，旧版静默按错数计算。16 位起逐位核对：能精确表示的（如 1e16）放行，
+      // 已被舍入的明确报「整数超出精确范围」，不让用户对着错误整数以为精确。
+      if (/^\d+$/.test(lit)) {
+        const digs = lit.replace(/^0+/, '') || '0'
+        if (digs.length >= 16) {
+          if (!isFinite(v)) throw new Error('overflow')
+          let inexact
+          if (digs.length <= 21) inexact = String(v) !== digs
+          else if (typeof BigInt === 'function') inexact = BigInt(digs) !== BigInt(v)
+          else inexact = true
+          if (inexact) throw new Error('precision')
+        }
+      }
       toks.push({ t: 'num', v: v })
       i = j
       continue
@@ -72,6 +87,8 @@ function applyFn(name, x, deg, isRad) {
   if (name === 'sin') return Math.sin(useDeg ? x * Math.PI / 180 : x)
   if (name === 'cos') return Math.cos(useDeg ? x * Math.PI / 180 : x)
   if (name === 'tan') {
+    // 角度制裸数字先走 % 180 精确检查（任意大角度都精确，如 180000090°；弧度近似检查在大 q 时误差会超容差）
+    if (useDeg && ((x % 180) + 180) % 180 === 90) throw new Error('undefined')
     const rad = useDeg ? x * Math.PI / 180 : x
     // 奇点判定必须落在最终弧度值上（1.5.9 修）：旧版只查角度制裸数字，
     // 带 ° 的输入（° 后缀先把值换算成弧度、isRad=true，useDeg 恒 false）与弧度制 π/2 都绕过检查，
@@ -80,7 +97,7 @@ function applyFn(name, x, deg, isRad) {
     // 89.9999999999° 的 q 距 1 为 1.1e-12，不误伤合法大值）。
     const q = rad / (Math.PI / 2)
     const k = Math.round(q)
-    if (Math.abs(q - k) < 1e-12 && Math.abs(k % 2) === 1) throw new Error('undefined')
+    if (Math.abs(q - k) < 1e-13 && Math.abs(k % 2) === 1) throw new Error('undefined')
     return Math.tan(rad)
   }
   if (name === 'log') { if (x <= 0) throw new Error('domain'); return Math.log10(x) }
@@ -291,6 +308,10 @@ function fracCalc(n1, d1, op, n2, d2) {
   // 入口安全整数检查（1.5.9）：超安全范围的输入在解析阶段已被舍入，结果后检拦不住「算的是另一个数」
   if (![n1, d1, n2, d2].every(Number.isSafeInteger)) return { error: '数字太大，超出精确计算范围' }
   if (d1 === 0 || d2 === 0) return { error: '分母不能为 0' }
+  // 加减前先分别约简两个输入分数（1.5.10）：MAX/MAX + MAX/MAX 这种输入本身安全，
+  // 不约简时中间和 2·MAX 先超安全范围被误报；约简后是 1/1 + 1/1 = 2。乘除同理受益。
+  const q1 = reduceFrac(n1, d1), q2 = reduceFrac(n2, d2)
+  n1 = q1.n; d1 = q1.d; n2 = q2.n; d2 = q2.d
   let n, d
   // 先约分再乘（1.5.8）：乘除先交叉约分、加减先用分母 gcd 缩小中间乘积，
   // 避免结果本身不大、中间乘积却先超安全整数被误报「数字太大」
@@ -342,8 +363,14 @@ function gcdLcm(a, b) {
 
 function simplifySqrt(n) {
   if (!Number.isInteger(n)) return { error: '请输入整数' }
+  if (!Number.isSafeInteger(n)) return { error: '数字太大，超出精确计算范围' }
   if (n < 0) return { error: '被开方数不能为负' }
   if (n === 0) return { coef: 0, rad: 1, dec: 0 }
+  // 输入上限 1e12（1.5.10，与方程根式路径 sqrtRat 的既有上限对齐）：根号页输入框本身有 9 位上限
+  //（≤999,999,999），此上限不改变任何可达行为；上限内试除最坏 1e6 次，手环可接受。
+  // 注：曾试立方根试除界＋末步完全平方检查，被 1..3000 全量校验抓出反例（18=3²·2 这类 p²·m 型），
+  // 该优化的正确性论证不成立，已回退为朴素试除——正确性优先。
+  if (n > 1e12) return { error: '数字太大，超出精确计算范围' }
   let coef = 1, rad = n
   for (let k = 2; k * k <= rad; k++) {
     while (rad % (k * k) === 0) { rad /= (k * k); coef *= k }

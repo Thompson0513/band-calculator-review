@@ -1161,9 +1161,6 @@ export default {
     plotFieldDefs: [],
     plotField: 'a',
     plotVals: { k: '1', b: '0', a: '1', c: '0', A: '1' },
-    plotRange: 8,
-    plotRangeChips: [{ r: 4, label: '±4' }, { r: 8, label: '±8' }, { r: 16, label: '±16' }],
-    plotShowRange: true,
     plotCfgLines: ['填好系数，点「画图象」']
   },
 
@@ -1222,7 +1219,17 @@ export default {
         success: function (data) {
           try {
             const arr = JSON.parse(data || '[]')
-            if (Array.isArray(arr)) { self.hist = arr.filter(function (h) { return h && isRealCalc(h.expr) }).slice(0, 10); self.refreshHistDisp() }
+            if (Array.isArray(arr)) {
+              // 字段完整性校验（1.5.10）：旧版只验 expr，res 缺失/类型错的条目点开时 useHist 会崩；
+              // ts 非法会让时间显示乱码。字段不全的整条丢弃，合法条目不受影响。
+              self.hist = arr.filter(function (h) {
+                return h && typeof h.expr === 'string' && typeof h.res === 'string' &&
+                  h.expr.length <= 200 && h.res.length <= 100 && isRealCalc(h.expr)
+              }).map(function (h) {
+                return { expr: h.expr, res: h.res, sgn: h.sgn, ts: Number.isFinite(h.ts) ? h.ts : 0 }
+              }).slice(0, 10)
+              self.refreshHistDisp()
+            }
           } catch (e) {}
         },
         fail: function () {}
@@ -1406,7 +1413,7 @@ export default {
     } catch (e) {
       this.previewOk = false
       // 能说清的错直接说清，别让用户对着 ··· 猜（算式没写完才用 ···）
-      const hints = { div0: '不能 ÷ 0', overflow: '数太大了', domain: '没有意义', undefined: '没有意义', 'fact domain': '阶乘要用整数' }
+      const hints = { div0: '不能 ÷ 0', overflow: '数太大了', domain: '没有意义', undefined: '没有意义', 'fact domain': '阶乘要用整数', precision: '整数超出精确范围' }
       const h = hints[e.message]
       this.resDisp = h || '···'
       this.resPx = h ? 28 : 36
@@ -1527,6 +1534,7 @@ export default {
   // ---------- 历史 ----------
   useHist(item) {
     this.buzz()
+    if (!item || typeof item.res !== 'string') return
     if (this.gatePaid()) return
     this.expr = dispNum(item.res.replace(/,/g, ''))
     this.fracOn = false
@@ -1874,8 +1882,18 @@ export default {
           const g = (tx, ty) => evalSide(parts[0], tx, ty) - evalSide(parts[1], tx, ty)
           const c00 = g(0, 0)
           const A = g(1, 0) - c00, B = g(0, 1) - c00
-          const tol = (t, want) => Math.abs(g(t[0], t[1]) - want) <= 1e-6 * Math.max(1, Math.abs(want))
-          if (!tol([1, 1], A + B + c00) || !tol([2, 0], 2 * A + c00) || !tol([0, 2], 2 * B + c00)) return null
+          // 线性校验改相对容差＋加密探针（1.5.10）：旧版 1e-6·max(1,|want|) 带绝对下限，
+          // 1e-7xy 这种小系数非线性项在探针点的偏差（≤6e-7）被下限吞掉，误判成一次方程组
+          //（0.0000001xy=0 与 x=1 曾被判「无数个解」，真解 x=1,y=0）。
+          // 容差改为随本式采样值尺度走（1e-8·S＋1e-12），探针加密到能单独照出 xy/x²/y² 与高阶混合项。
+          const probes = [[1, 1], [2, 0], [0, 2], [2, 2], [2, 1], [1, 2], [-2, 1]]
+          let S = Math.max(Math.abs(c00), Math.abs(g(1, 0)), Math.abs(g(0, 1)))
+          const vals = []
+          for (const t of probes) { const v = g(t[0], t[1]); vals.push(v); if (Math.abs(v) > S) S = Math.abs(v) }
+          const tol = 1e-8 * S + 1e-12
+          for (let pi = 0; pi < probes.length; pi++) {
+            if (Math.abs(vals[pi] - (A * probes[pi][0] + B * probes[pi][1] + c00)) > tol) return null
+          }
           return { A: A, B: B, C: c00 }
         }
         const c1 = coef(raw1), c2 = coef(raw2)
@@ -1916,10 +1934,23 @@ export default {
         return
       }
       const a = (g1 + gm - 2 * g0) / 2, b = (g1 - gm) / 2, c = g0
-      const chk = (t) => Math.abs(g(t) - (a * t * t + b * t + c)) <= 1e-6 * Math.max(1, Math.abs(g(t)))
-      if (!chk(2) || !chk(-2)) {
+      // 拟合校验改相对容差＋探针加密到 ±3（1.5.10）：旧版 1e-6·max(1,·) 的绝对下限会吞掉小系数高次项，
+      // 0.0000001x³=0.0000008 曾被拟合成一次方程给出 x=8（真解 x=2，且三次本应报不支持）。
+      // 容差随采样值尺度走（1e-8·S＋1e-12）；探针点取值抛错（如 x 在分母、x−3 做分母）按不支持处理。
+      let S = Math.max(Math.abs(g0), Math.abs(g1), Math.abs(gm))
+      const chkT = [2, -2, 3, -3], chkV = []
+      try {
+        for (const t of chkT) { const v = g(t); chkV.push(v); if (Math.abs(v) > S) S = Math.abs(v) }
+      } catch (e3) {
         this.eqLines = ['只支持一元一次 / 二次方程', 'x 不能在根号、分母里，也别用 x³']
         return
+      }
+      const fitTol = 1e-8 * S + 1e-12
+      for (let ci = 0; ci < chkT.length; ci++) {
+        if (Math.abs(chkV[ci] - (a * chkT[ci] * chkT[ci] + b * chkT[ci] + c)) > fitTol) {
+          this.eqLines = ['只支持一元一次 / 二次方程', 'x 不能在根号、分母里，也别用 x³']
+          return
+        }
       }
       const r = calc.solveQuad(a, b, c)
       if (r.error) { this.eqLines = [r.error]; return }
@@ -1936,7 +1967,7 @@ export default {
       else if (r.type === 'none') this.eqLines = [head, '方程无解']
       else this.eqLines = [head, '恒等式：无数个解']
     } catch (e) {
-      const hints = { div0: '不能 ÷ 0', overflow: '数太大了', domain: '没有意义（比如根号里是负数）', undefined: '没有意义' }
+      const hints = { div0: '不能 ÷ 0', overflow: '数太大了', domain: '没有意义（比如根号里是负数）', undefined: '没有意义', precision: '整数超出精确范围' }
       this.eqLines = [hints[e.message] || '算式有问题，检查括号和符号']
     }
   },
@@ -2074,6 +2105,14 @@ export default {
     if (pts.length < 2) return false
     if (ymin > 0) ymin = 0
     if (ymax < 0) ymax = 0
+    // 关键点纳入纵轴范围（1.5.10）：采样步长照不到的极值关键点（如 sin 的 90° 峰值不在 8° 采样格上）
+    // 旧版靠 8% 留白偶然兜住；纳入后再加留白，保证关键点结构上不被范围过滤掉。
+    for (const kp of (cfg.keyPts || [])) {
+      if (kp.x >= cfg.x0 && kp.x <= cfg.x1 && isFinite(kp.y)) {
+        if (kp.y < ymin) ymin = kp.y
+        if (kp.y > ymax) ymax = kp.y
+      }
+    }
     const padY = (ymax - ymin) * 0.08 + 0.001
     ymin -= padY; ymax += padY
     const W = 312, H = 296
@@ -2130,7 +2169,6 @@ export default {
     this.pFvPx = fvPxOf([this.plotVals.k, this.plotVals.b, this.plotVals.a, this.plotVals.c, this.plotVals.A], true)
     const def = this.plotTypeDef()
     this.plotFormula = def.formula
-    this.plotShowRange = !!def.range
     const vals = this.plotVals
     this.plotFieldDefs = def.fields.map(function (f) {
       return { key: f.key, label: f.label, val: vals[f.key] }
@@ -2148,7 +2186,6 @@ export default {
     this.syncPlotFields()
   },
   setPlotField(k) { this.buzz(); this.plotField = k },
-  setPlotRange(r) { this.buzz(); this.plotRange = r },
   plotPad(v) {
     this.buzz()
     const r = editNum(this.plotVals[this.plotField], v, true)
