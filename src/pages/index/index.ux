@@ -637,7 +637,9 @@ function hardFit(v, cap) {
 function ansStr(name, v, maxLen) {
   const fr = calc.toFraction(v)
   if (fr && fr.d !== 1) {
-    const fs = (name ? name + ' = ' : '= ') + fr.n + '/' + fr.d
+    // 分数只是容差内近似（如 1.0000000002÷3 认作 1/3）时连接号用 ≈，不许冒充精确
+    //（1.5.12，ChatGPT 第八份报告实证）；精确分数维持「名 = 分数 = 小数」
+    const fs = (name ? name + (calc.fracIsExact(v, fr) ? ' = ' : ' ≈ ') : (calc.fracIsExact(v, fr) ? '= ' : '≈ ')) + fr.n + '/' + fr.d
     const dec = hardFit(v, Math.max(maxLen - fs.length - 3, 4))
     if (fs.length + 3 + dec.length <= maxLen) return fs + ' ' + calc.eqSign(v, dec) + ' ' + dec
     // 分数串本身太长（极端大分子/分母）：硬塞必然被截断，退回纯小数行
@@ -650,7 +652,8 @@ function ansStr(name, v, maxLen) {
 function cplxStr(name, r, sign) {
   const csg = (calc.eqSign(r.re) === '=' && calc.eqSign(r.im) === '=') ? '=' : '≈'
   const fr = calc.toFraction(r.re)
-  if (fr && fr.d !== 1) {
+  // 实部分数只认严格精确的（1.5.12）：近似分数不在复数行里冒充精确，退回纯小数行
+  if (fr && fr.d !== 1 && calc.fracIsExact(r.re, fr)) {
     const fs = fr.n + '/' + fr.d
     const build = function (re, im) { return name + ' ' + csg + ' ' + fs + ' ' + calc.eqSign(r.re, re) + ' ' + re + ' ' + sign + ' ' + im + 'i' }
     let line = build(hardFit(r.re, 8), hardFit(r.im, 7))
@@ -791,7 +794,8 @@ function linePx(s) {
 function pvStr(v, cap) {
   const fr = calc.toFraction(v)
   if (fr && fr.d !== 1) {
-    const fs = (fr.n + '/' + fr.d).replace(/-/g, '−')
+    // 近似分数带 ≈ 前缀（1.5.12，与 ansStr 同口径），多占 1 字、宽度计算同步算入
+    const fs = ((calc.fracIsExact(v, fr) ? '' : '≈') + fr.n + '/' + fr.d).replace(/-/g, '−')
     const room = cap - fs.length - 3
     if (room >= 4) {
       const decA = hardFit(v, room)
@@ -852,7 +856,7 @@ function trigInfoLines(A) {
   if (aA >= 10000) {
     let amp = DA(aA)
     const fr = calc.toFraction(aA)
-    if (fr && fr.d !== 1) amp = fr.n + '/' + fr.d + ' ' + calc.eqSign(aA, amp) + ' ' + amp
+    if (fr && fr.d !== 1) amp = (calc.fracIsExact(aA, fr) ? '' : '≈') + fr.n + '/' + fr.d + ' ' + calc.eqSign(aA, amp) + ' ' + amp
     lines.push('振幅 ' + amp)
     lines.push('最高 ' + DA(aA) + '、最低 ' + DA(-aA))
     return lines
@@ -861,7 +865,7 @@ function trigInfoLines(A) {
   const orig = '振幅 ' + mx + '，最高 ' + mx + '、最低 ' + mn
   const fr = calc.toFraction(aA)
   if (fr && fr.d !== 1) {
-    const fs = (fr.n + '/' + fr.d).replace(/-/g, '−')
+    const fs = ((calc.fracIsExact(aA, fr) ? '' : '≈') + fr.n + '/' + fr.d).replace(/-/g, '−')
     const grades = [[0, 0], [6, 7], [5, 6], [4, 5]]
     for (const relaxed of [false, true]) {
       for (const g of grades) {
@@ -931,11 +935,15 @@ function termNum(a) {
 function fmtPolyFit(a, b, c) {
   let head = '整理成 ' + fmtPoly(a, b, c) + ' = 0'
   if (head.length <= 26) return head
+  // 压缩取整绝不许把非零系数舍成 0（1.5.12）：0.004 旧版被 r2 舍成 0、二次项在
+  // 表头凭空消失，显示的方程与实际求解的方程不一致（ChatGPT 第八份报告实证）。
+  // 非零被舍成 0 时保留原值，交给 fmtPoly 自己按 DP/科学计数显示
+  const keep = function (v, r) { return (v !== 0 && r === 0) ? v : r }
   const r2 = function (v) { return Math.round(v * 100) / 100 }
-  head = '整理成 ' + fmtPoly(r2(a), r2(b), r2(c)) + ' = 0'
+  head = '整理成 ' + fmtPoly(keep(a, r2(a)), keep(b, r2(b)), keep(c, r2(c))) + ' = 0'
   if (head.length <= 26) return head
   const r1 = function (v) { return Math.round(v * 10) / 10 }
-  head = '整理成 ' + fmtPoly(r1(a), r1(b), r1(c)) + ' = 0'
+  head = '整理成 ' + fmtPoly(keep(a, r1(a)), keep(b, r1(b)), keep(c, r1(c))) + ' = 0'
   if (head.length <= 26) return head
   return '整理成 ' + fmtPoly(a, b, c, true) + ' = 0'
 }
@@ -1402,16 +1410,20 @@ export default {
       const frac = calc.toFraction(v)
       this.canFrac = !!frac && frac.d !== 1
       let s
+      let mainIsFrac = false
       let fracExact = false
       if (this.fracOn && frac) {
         s = frac.d === 1 ? String(frac.n) : frac.n + '/' + frac.d
-        fracExact = true
+        mainIsFrac = true
+        // 分数与原值严格相等才配「=」；容差内近似认出的分数（如 1.0000000002÷3→1/3）
+        // 用「≈」，不许冒充精确值（1.5.12，ChatGPT 第八份报告实证）
+        fracExact = calc.fracIsExact(v, frac)
         // 分数串太长（大数带小数）一行放不下会溢出：回退成小数显示，别截断
-        if (s.length > 16) { s = fitResStr(v, 11); fracExact = false }
+        if (s.length > 16) { s = fitResStr(v, 11); mainIsFrac = false }
       } else s = fitResStr(v, this.canFrac ? 11 : 18)
-      this.resDisp = (fracExact ? '=' : calc.eqSign(v, s)) + ' ' + s
+      this.resDisp = (mainIsFrac ? (fracExact ? '=' : '≈') : calc.eqSign(v, s)) + ' ' + s
       this.resPx = fitResPx(this.resDisp, this.canFrac)
-      this.chipText = fracChipText(this.fracOn, frac, v, fracExact)
+      this.chipText = fracChipText(this.fracOn, frac, v, mainIsFrac)
     } catch (e) {
       this.previewOk = false
       // 能说清的错直接说清，别让用户对着 ··· 猜（算式没写完才用 ···）
@@ -1881,18 +1893,32 @@ export default {
       try {
         const coef = (raw) => {
           const parts = raw.indexOf('=') >= 0 ? raw.split('=') : [raw, '0']
-          const g = (tx, ty) => evalSide(parts[0], tx, ty) - evalSide(parts[1], tx, ty)
+          // Sside 记录两边式子自身的量级：容差绝对项按它走（1.5.12），不再用固定
+          // 1e-12 地板——方程整体在 1e-15 量级时固定地板把 xy 这类非线性项整个吞掉、
+          // 误判成一次方程组（1e-15xy=0 与 x=1 曾被判「无数个解」，第八份报告实证）
+          let Sside = 0
+          const g = (tx, ty) => {
+            const L = evalSide(parts[0], tx, ty), R = evalSide(parts[1], tx, ty)
+            if (Math.abs(L) > Sside) Sside = Math.abs(L)
+            if (Math.abs(R) > Sside) Sside = Math.abs(R)
+            return L - R
+          }
           const c00 = g(0, 0)
-          const A = g(1, 0) - c00, B = g(0, 1) - c00
+          const g10 = g(1, 0), g01 = g(0, 1)
+          const A = g10 - c00, B = g01 - c00
           // 线性校验改相对容差＋加密探针（1.5.10）：旧版 1e-6·max(1,|want|) 带绝对下限，
           // 1e-7xy 这种小系数非线性项在探针点的偏差（≤6e-7）被下限吞掉，误判成一次方程组
           //（0.0000001xy=0 与 x=1 曾被判「无数个解」，真解 x=1,y=0）。
           // 容差改为随本式采样值尺度走（1e-8·S＋1e-12），探针加密到能单独照出 xy/x²/y² 与高阶混合项。
-          const probes = [[1, 1], [2, 0], [0, 2], [2, 2], [2, 1], [1, 2], [-2, 1]]
-          let S = Math.max(Math.abs(c00), Math.abs(g(1, 0)), Math.abs(g(0, 1)))
+          // 探针 1.5.12 再加密并加非整数点：旧探针的 x 只取 {0,±1,2,−2}，
+          // x(x−1)(x−2)(x+2) 这类在全部探针点恰好为零的多项式能骗过识别（第八份报告实证）；
+          // 加入 x=3、x=0.5 等点后，这类构造要在十几个点同时为零，超出 38 字输入能构造的范围。
+          // 容差绝对项同步改 7e-15·Sside（约 30 个 ulp 的求值噪声额度）。
+          const probes = [[1, 1], [2, 0], [0, 2], [2, 2], [2, 1], [1, 2], [-2, 1], [3, 0], [0, 3], [3, 3], [0.5, 0.5], [0.5, 2], [2, 0.5], [-1, -1], [1, -2]]
+          let S = Math.max(Math.abs(c00), Math.abs(g10), Math.abs(g01))
           const vals = []
           for (const t of probes) { const v = g(t[0], t[1]); vals.push(v); if (Math.abs(v) > S) S = Math.abs(v) }
-          const tol = 1e-8 * S + 1e-12
+          const tol = 1e-8 * S + 7e-15 * Sside
           for (let pi = 0; pi < probes.length; pi++) {
             if (Math.abs(vals[pi] - (A * probes[pi][0] + B * probes[pi][1] + c00)) > tol) return null
           }
@@ -1920,7 +1946,10 @@ export default {
         if (raw.indexOf('=') >= 0) {
           const parts = raw.split('=')
           const lv = evalSide(parts[0], null), rv = evalSide(parts[1], null)
-          this.eqLines = Math.abs(lv - rv) <= 1e-12 * Math.max(Math.abs(lv), Math.abs(rv)) + 1e-15
+          // 容差 1.5.12 再收紧（相对 1e-14＋绝对地板 6e-17）：1=1.0000000000005（差 5e-13）
+          // 旧版被 1e-12 相对容差判成恒等式（ChatGPT 第八份报告实证）；地板 6e-17 只吸收
+          // 0.1+0.2−0.3 = 5.55e-17 这一级经典浮点残差，0=1e-16 起一律判不相等
+          this.eqLines = Math.abs(lv - rv) <= 1e-14 * Math.max(Math.abs(lv), Math.abs(rv)) + 6e-17
             ? ['两边相等：恒等式'] : ['两边不相等', ansStr('左边', lv, 26), ansStr('右边', rv, 26)]
         } else {
           const v = evalSide(raw, null)
@@ -1929,7 +1958,14 @@ export default {
         return
       }
       const parts = raw.indexOf('=') >= 0 ? raw.split('=') : [raw, '0']
-      const g = (t) => evalSide(parts[0], t, null) - evalSide(parts[1], t, null)
+      // Sside 记录两边式子自身的量级，供容差绝对项使用（1.5.12，同方程组 coef 口径）
+      let Sside = 0
+      const g = (t) => {
+        const L = evalSide(parts[0], t, null), R = evalSide(parts[1], t, null)
+        if (Math.abs(L) > Sside) Sside = Math.abs(L)
+        if (Math.abs(R) > Sside) Sside = Math.abs(R)
+        return L - R
+      }
       let g0, g1, gm, g3, gm3
       try { g0 = g(0); g1 = g(1); gm = g(-1); g3 = g(3); gm3 = g(-3) } catch (e2) {
         this.eqLines = ['只支持一元一次 / 二次方程', 'x 不能在根号、分母里，也别用 x³']
@@ -1937,19 +1973,32 @@ export default {
       }
       // 二次系数改用 ±3 二阶差分估计（1.5.11）：±1 差分在大系数方程里相消误差达 19%
       //（1e8x+1e-7x²=1e8 的大根曾偏离真值 16%）；±3 差分把误差压到 0.7%。b、c 不变。
-      const a = (g3 + gm3 - 2 * g0) / 18, b = (g1 - gm) / 2, c = g0
+      let a = (g3 + gm3 - 2 * g0) / 18
+      const b = (g1 - gm) / 2, c = g0
       // 拟合校验改相对容差＋探针加密到 ±3（1.5.10）：旧版 1e-6·max(1,·) 的绝对下限会吞掉小系数高次项，
       // 0.0000001x³=0.0000008 曾被拟合成一次方程给出 x=8（真解 x=2，且三次本应报不支持）。
       // 容差随采样值尺度走（1e-8·S＋1e-12）；探针点取值抛错（如 x 在分母、x−3 做分母）按不支持处理。
+      // 探针 1.5.12 再加半整数点 ±0.5/±1.5/±2.5/±3.5：旧探针全在整数点上，
+      // x(x²−1)(x²−4)(x²−9)(x²−16) 在每个整数探针点恰好为零、被误判恒等式
+      //（ChatGPT 第八份报告实证）；半整数点上它非零，拟合当场露馅。
       let S = Math.max(Math.abs(g0), Math.abs(g1), Math.abs(gm), Math.abs(g3), Math.abs(gm3))
-      const chkT = [2, -2, 4, -4], chkV = []
+      const chkT = [2, -2, 4, -4, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.5, -3.5], chkV = []
       try {
         for (const t of chkT) { const v = g(t); chkV.push(v); if (Math.abs(v) > S) S = Math.abs(v) }
       } catch (e3) {
         this.eqLines = ['只支持一元一次 / 二次方程', 'x 不能在根号、分母里，也别用 x³']
         return
       }
-      const fitTol = 1e-8 * S + 1e-12
+      // 二次系数显著性（1.5.12）：a 在探针边缘（x=±4）的贡献 |a|·16 若不到函数量级 S 的
+      // 1e-15，是浮点相消噪声而非真二次项——x=0.1 这类一次方程旧版因此被当二次、
+      // 造出 1e17 级假根（第八份报告实证）。判噪声后按 a=0 走一次路径，随后拟合校验
+      // 会用加密探针复核一次模型，拟合不过照样报不支持，不造假根。真小系数二次
+      //（1e8x+1e-7x²=1e8，|a|·16/S ≈ 3.2e-15）在阈值上方，不受影响
+      if (Math.abs(a) * 16 <= 1e-15 * S) a = 0
+      // 容差绝对项改按两边量级走（7e-15·Sside，约 30 个 ulp 的求值噪声额度）：
+      // 旧版固定 +1e-12 地板在方程整体量级低于 1e-12 时把真非线性项整个吞掉
+      //（1e-15x³=8e-15 曾被拟合成一次给出假解 x=8，第八份报告实证）
+      const fitTol = 1e-8 * S + 7e-15 * Sside
       for (let ci = 0; ci < chkT.length; ci++) {
         if (Math.abs(chkV[ci] - (a * chkT[ci] * chkT[ci] + b * chkT[ci] + c)) > fitTol) {
           this.eqLines = ['只支持一元一次 / 二次方程', 'x 不能在根号、分母里，也别用 x³']
@@ -2096,15 +2145,28 @@ export default {
   buildPlot(cfg) {
     const N = 90
     let ymin = Infinity, ymax = -Infinity
-    const pts = []
+    // 采样值上限改自适应（1.5.12）：旧版固定 |y|≤1e6 把大斜率直线（y=1e8x+1e8）、
+    // 大振幅正弦（1e7·sin x）的合法采样点几乎全过滤掉、整图画不出来
+    //（ChatGPT 第八份报告实证）。改按采样 |y| 中位数定上限（max(1e6, 200×中位数)）：
+    // 普通函数行为不变（中位数小、上限仍是 1e6，tan 渐近线尖峰照旧被滤），
+    // 整体量级大的函数按自身量级放行
+    const raw = []
     for (let i = 0; i <= N; i++) {
       const x = cfg.x0 + (cfg.x1 - cfg.x0) * i / N
       let y
       try { y = cfg.f(x) } catch (e) { y = NaN }
-      if (typeof y !== 'number' || isNaN(y) || !isFinite(y) || Math.abs(y) > 1e6) continue
-      pts.push({ x: x, y: y })
-      if (y < ymin) ymin = y
-      if (y > ymax) ymax = y
+      if (typeof y !== 'number' || isNaN(y) || !isFinite(y)) continue
+      raw.push({ x: x, y: y })
+    }
+    const mags = raw.map(function (pt) { return Math.abs(pt.y) }).sort(function (p, q) { return p - q })
+    const med = mags.length ? mags[Math.floor(mags.length / 2)] : 0
+    const cap = Math.max(1e6, 200 * med)
+    const pts = []
+    for (const pt of raw) {
+      if (Math.abs(pt.y) > cap) continue
+      pts.push(pt)
+      if (pt.y < ymin) ymin = pt.y
+      if (pt.y > ymax) ymax = pt.y
     }
     if (pts.length < 2) return false
     if (ymin > 0) ymin = 0

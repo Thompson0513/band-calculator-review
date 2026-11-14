@@ -78,7 +78,9 @@ function tokenize(src) {
 // 把数字文字量规整成「意图整数」的十进制数字串（纯整数 / .0 小数 / e 记法统一处理，1.5.11）：
 // 小数部分含非零数字、或移位后仍带小数的返回 null（不是整数文字量，浮点近似属预期，不查）。
 function intDigitsOf(lit) {
-  const m = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(lit)
+  // 小数部分允许为空（末尾小数点 '123.'、'123.e0' 也是整数伪装，1.5.12 补）：
+  // 旧版要求小数点后至少一位数字，这两种写法绕过检查静默舍入（ChatGPT 第八份报告实证）
+  const m = /^(\d+)(?:\.(\d*))?(?:e([+-]?\d+))?$/i.exec(lit)
   if (!m) return null
   const frac = m[2] || ''
   // 只查「整数伪装」：小数部分无有效数字（无小数点、或 .0…0 形式），值才是被精确声称的整数；
@@ -245,7 +247,12 @@ function cleanNum(v) {
   // 走科学计数法显示，不能吞成 0（1.5.6 实证：1÷10^16、x²+1e16x+1 的小根 −1e-16
   // 都曾被吞成 0）；表示不干净的（如 sin(180°) = 1.2246…e-16、0.1+0.2−0.3
   // = 5.55…e-17）是浮点消去尾巴，归零
-  if (Math.abs(v) < 1e-15) return r12 === v ? r12 : 0
+  // 「精确表示」的判据 1.5.12 放宽到表示级 ulp：1÷10^16×1.1 的乘积双精度值与
+  // 12 位十进制回读值差 1 ulp（相对 1.1e-16），旧版严格相等把这类真值误吞成 0
+  //（ChatGPT 第八份报告实证）。相对阈值 1e-13 仍低于实测尾巴（sin π 2.2e-12、
+  // cos(π/2) 5.3e-13、0.1+0.2−0.3 7.6e-13），尾巴继续归零；(1/3)×1e-15 级
+  //（相对差 1e-12）在阈值外、维持 1.5.6 既定边界
+  if (Math.abs(v) < 1e-15) return (r12 === v || Math.abs(r12 - v) <= 1e-13 * Math.abs(v)) ? r12 : 0
   return r12
 }
 
@@ -308,6 +315,18 @@ function toFraction(v) {
   // 兜底也必须是真分数（误差 <1e-10）；π≈355/113 这类近似不许冒充精确分数
   if (k1 >= 1 && Math.abs(x - h1 / k1) < 1e-10) return { n: sign * h1, d: k1 }
   return null
+}
+
+// toFraction 给出的分数是否与原值严格相等（1.5.12）：容差内认出的分数可能只是
+// 近似（如 1.0000000002÷3 认作 1/3，差 6.7e-11），显示层据此区分「= 分数」
+// 与「≈ 分数」，不许近似分数冒充精确值（ChatGPT 第八份报告实证）。
+// 判据是「显示精度内相等」：分数与原值都收敛到 12 位有效数字后逐位相等。
+// 1/6、4/27 的求值结果与键入的 12 位小数 0.148148148148 在 12 位上与分数完全
+// 一致，算精确（1.5.0/1.5.4 既定口径）；0.3333333334 与 1/3 在第 10 位就不同、
+// 12 位内对不上，判近似。与 eqSign 的回读口径同哲学：以应用自身的显示精度为准
+function fracIsExact(v, fr) {
+  if (!fr) return false
+  return parseFloat((fr.n / fr.d).toPrecision(12)) === cleanNum(v)
 }
 
 // ---------- 分数四则（整数分子分母） ----------
@@ -597,6 +616,7 @@ export default {
   formatPlain: formatPlain,
   formatDisplay: formatDisplay,
   toFraction: toFraction,
+  fracIsExact: fracIsExact,
   fracCalc: fracCalc,
   gcdLcm: gcdLcm,
   simplifySqrt: simplifySqrt,
