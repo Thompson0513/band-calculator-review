@@ -1,0 +1,39 @@
+{
+  "config": {
+    "designWidth": 336,
+    "logLevel": "error"
+  },
+  "deviceTypeList": [
+    "watch"
+  ],
+  "features": [
+    {
+      "name": "system.storage"
+    },
+    {
+      "name": "system.vibrator"
+    },
+    {
+      "name": "system.device"
+    }
+  ],
+  "permissions": [
+    {
+      "name": "hapjs.permission.DEVICE_INFO"
+    }
+  ],
+  "icon": "/common/logo.png",
+  "minPlatformVersion": 1000,
+  "name": "计算器",
+  "package": "com.muse.calc",
+  "router": {
+    "entry": "pages/index",
+    "pages": {
+      "pages/index": {
+        "component": "index"
+      }
+    }
+  },
+  "versionCode": 45,
+  "versionName": "1.5.6"
+}
