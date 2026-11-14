@@ -38,14 +38,15 @@ function tokenize(src) {
       // 纯整数文字量的精确性检查（1.5.10）：9007199254740993 这类整数在解析时已被舍入成
       // 9007199254740992，旧版静默按错数计算。16 位起逐位核对：能精确表示的（如 1e16）放行，
       // 已被舍入的明确报「整数超出精确范围」，不让用户对着错误整数以为精确。
-      if (/^\d+$/.test(lit)) {
-        const digs = lit.replace(/^0+/, '') || '0'
+      const digs = intDigitsOf(lit)
+      if (digs !== null) {
         if (digs.length >= 16) {
           if (!isFinite(v)) throw new Error('overflow')
+          // 核对优先用 BigInt 精确比较：String(v) 是最短回读串，21 位附近会出现「已舍入但回读同串」的盲区
+          //（如 9007199254740993e5）；无 BigInt 的运行时退回 String 回读（≥22 位保守报错）。
           let inexact
-          if (digs.length <= 21) inexact = String(v) !== digs
-          else if (typeof BigInt === 'function') inexact = BigInt(digs) !== BigInt(v)
-          else inexact = true
+          if (typeof BigInt === 'function') inexact = BigInt(digs) !== BigInt(v)
+          else inexact = digs.length <= 21 ? String(v) !== digs : true
           if (inexact) throw new Error('precision')
         }
       }
@@ -72,6 +73,29 @@ function tokenize(src) {
     throw new Error('bad char ' + ch)
   }
   return toks
+}
+
+// 把数字文字量规整成「意图整数」的十进制数字串（纯整数 / .0 小数 / e 记法统一处理，1.5.11）：
+// 小数部分含非零数字、或移位后仍带小数的返回 null（不是整数文字量，浮点近似属预期，不查）。
+function intDigitsOf(lit) {
+  const m = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(lit)
+  if (!m) return null
+  const frac = m[2] || ''
+  // 只查「整数伪装」：小数部分无有效数字（无小数点、或 .0…0 形式），值才是被精确声称的整数；
+  // 小数部分带有效数字的是普通小数/科学计数（如应用自身格式化的 3.69844555555e+34），
+  // 浮点近似属其记法本义，不查。移位为负时须靠末尾零抵消才仍是整数。
+  if (frac.replace(/0+$/, '') !== '') return null
+  let digs = (m[1] + frac).replace(/^0+/, '')
+  const shift = (m[3] ? parseInt(m[3], 10) : 0) - frac.length
+  if (shift > 0) digs += '0'.repeat(shift)
+  else if (shift < 0) {
+    const cut = -shift
+    if (!digs.endsWith('0'.repeat(cut))) return null
+    digs = digs.slice(0, digs.length - cut)
+  }
+  // e 记法且总位数远超整数精确范围（如 1e308）是数量级记法，不是整数声称，不查
+  if (m[3] !== undefined && digs.length > 21) return null
+  return digs || '0'
 }
 
 function fact(n) {

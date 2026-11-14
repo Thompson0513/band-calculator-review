@@ -545,7 +545,9 @@ function fmtPoly(a, b, c, compact) {
   const push = function (coef, sym) {
     if (coef === 0) return
     const mag = Math.abs(coef)
-    const body = sym ? (mag === 1 ? sym : DP(mag) + sym) : DP(mag)
+    // 非零系数被 DP 显示成 0 时改科学计数（1.5.11）：1e-7 级系数旧版在「整理成」行显示 0x²，与实际按二次求解矛盾
+    const magStr = DP(mag) === '0' ? mag.toPrecision(2).replace(/-/g, '−') : DP(mag)
+    const body = sym ? (mag === 1 ? sym : magStr + sym) : magStr
     terms.push({ neg: coef < 0, body: body })
   }
   push(a, 'x²'); push(b, 'x'); push(c, '')
@@ -1226,7 +1228,7 @@ export default {
                 return h && typeof h.expr === 'string' && typeof h.res === 'string' &&
                   h.expr.length <= 200 && h.res.length <= 100 && isRealCalc(h.expr)
               }).map(function (h) {
-                return { expr: h.expr, res: h.res, sgn: h.sgn, ts: Number.isFinite(h.ts) ? h.ts : 0 }
+                return { expr: h.expr, res: h.res, sgn: h.sgn, ts: (Number.isFinite(h.ts) && Math.abs(h.ts) <= 8640000000000000) ? h.ts : 0 }
               }).slice(0, 10)
               self.refreshHistDisp()
             }
@@ -1918,7 +1920,7 @@ export default {
         if (raw.indexOf('=') >= 0) {
           const parts = raw.split('=')
           const lv = evalSide(parts[0], null), rv = evalSide(parts[1], null)
-          this.eqLines = Math.abs(lv - rv) <= 1e-9 * Math.max(1, Math.abs(lv), Math.abs(rv))
+          this.eqLines = Math.abs(lv - rv) <= 1e-12 * Math.max(Math.abs(lv), Math.abs(rv)) + 1e-15
             ? ['两边相等：恒等式'] : ['两边不相等', ansStr('左边', lv, 26), ansStr('右边', rv, 26)]
         } else {
           const v = evalSide(raw, null)
@@ -1928,17 +1930,19 @@ export default {
       }
       const parts = raw.indexOf('=') >= 0 ? raw.split('=') : [raw, '0']
       const g = (t) => evalSide(parts[0], t, null) - evalSide(parts[1], t, null)
-      let g0, g1, gm
-      try { g0 = g(0); g1 = g(1); gm = g(-1) } catch (e2) {
+      let g0, g1, gm, g3, gm3
+      try { g0 = g(0); g1 = g(1); gm = g(-1); g3 = g(3); gm3 = g(-3) } catch (e2) {
         this.eqLines = ['只支持一元一次 / 二次方程', 'x 不能在根号、分母里，也别用 x³']
         return
       }
-      const a = (g1 + gm - 2 * g0) / 2, b = (g1 - gm) / 2, c = g0
+      // 二次系数改用 ±3 二阶差分估计（1.5.11）：±1 差分在大系数方程里相消误差达 19%
+      //（1e8x+1e-7x²=1e8 的大根曾偏离真值 16%）；±3 差分把误差压到 0.7%。b、c 不变。
+      const a = (g3 + gm3 - 2 * g0) / 18, b = (g1 - gm) / 2, c = g0
       // 拟合校验改相对容差＋探针加密到 ±3（1.5.10）：旧版 1e-6·max(1,·) 的绝对下限会吞掉小系数高次项，
       // 0.0000001x³=0.0000008 曾被拟合成一次方程给出 x=8（真解 x=2，且三次本应报不支持）。
       // 容差随采样值尺度走（1e-8·S＋1e-12）；探针点取值抛错（如 x 在分母、x−3 做分母）按不支持处理。
-      let S = Math.max(Math.abs(g0), Math.abs(g1), Math.abs(gm))
-      const chkT = [2, -2, 3, -3], chkV = []
+      let S = Math.max(Math.abs(g0), Math.abs(g1), Math.abs(gm), Math.abs(g3), Math.abs(gm3))
+      const chkT = [2, -2, 4, -4], chkV = []
       try {
         for (const t of chkT) { const v = g(t); chkV.push(v); if (Math.abs(v) > S) S = Math.abs(v) }
       } catch (e3) {
