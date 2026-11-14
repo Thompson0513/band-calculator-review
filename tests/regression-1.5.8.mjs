@@ -153,7 +153,7 @@ eq('F (2+3)4 结果', inst3.resDisp, '= 20')
 const inst = makeInst(); inst.unlocked = true
 inst.expr = '1e308×1e308'
 inst.refreshCalc()
-eq('G 溢出预览显示', inst.resDisp, '≈ 溢出')
+eq('G 溢出预览显示（1.5.14 改错误状态口径：无 ≈、previewOk=false，见 regression-1.5.14 J）', inst.resDisp, '溢出')
 inst.pressKey('eq')
 eq('G 按 = 后 lastAns 不被污染', inst.lastAns, '')
 eq('G 按 = 后不记历史', inst.hist.length, 0)

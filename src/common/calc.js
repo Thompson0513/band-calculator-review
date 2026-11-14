@@ -77,27 +77,37 @@ function tokenize(src) {
   return toks
 }
 
-// 把数字文字量规整成「意图整数」的十进制数字串（纯整数 / .0 小数 / e 记法统一处理，1.5.11）：
-// 小数部分含非零数字、或移位后仍带小数的返回 null（不是整数文字量，浮点近似属预期，不查）。
+// 把数字文字量规整成「意图整数」的十进制数字串（纯整数 / 小数 / e 记法统一处理）：
+// 移位后仍是整数的给出数字串（供逐位核对），否则返回 null（不是整数声称，浮点近似属预期，不查）。
+// 1.5.14 改按小数点位置统一移位（旧版先按「小数部分无有效数字」过滤再移位）：
+// 900719925474099.3e1 移位后恰是整数 9007199254740993，旧版因小数部分含 3 直接
+// 放行、静默舍入成 …992（ChatGPT 第十份报告实证）。极端指数（|exp|>400）先挡：
+// 1e999999999 旧版在 '0'.repeat(shift) 处构造近 10 亿字符、抛 Invalid string length
+//（同报告实证）；这种指数下值必然溢出/下溢，不是整数精确性问题，交回普通求值。
 function intDigitsOf(lit) {
-  // 小数部分允许为空（末尾小数点 '123.'、'123.e0' 也是整数伪装，1.5.12 补）：
-  // 旧版要求小数点后至少一位数字，这两种写法绕过检查静默舍入（ChatGPT 第八份报告实证）
+  // 小数部分允许为空（末尾小数点 '123.'、'123.e0' 也是整数伪装，1.5.12 补）
   const m = /^(\d+)(?:\.(\d*))?(?:e([+-]?\d+))?$/i.exec(lit)
   if (!m) return null
-  const frac = m[2] || ''
-  // 只查「整数伪装」：小数部分无有效数字（无小数点、或 .0…0 形式），值才是被精确声称的整数；
-  // 小数部分带有效数字的是普通小数/科学计数（如应用自身格式化的 3.69844555555e+34），
-  // 浮点近似属其记法本义，不查。移位为负时须靠末尾零抵消才仍是整数。
-  if (frac.replace(/0+$/, '') !== '') return null
-  let digs = (m[1] + frac).replace(/^0+/, '')
-  const shift = (m[3] ? parseInt(m[3], 10) : 0) - frac.length
-  if (shift > 0) digs += '0'.repeat(shift)
-  else if (shift < 0) {
-    const cut = -shift
-    if (!digs.endsWith('0'.repeat(cut))) return null
-    digs = digs.slice(0, digs.length - cut)
+  const exp = m[3] ? parseInt(m[3], 10) : 0
+  if (exp > 400 || exp < -400) return null
+  const raw = m[1] + (m[2] || '')
+  if (/^0+$/.test(raw)) return '0'
+  // 小数点位置（相对 raw 首位）：整数部位数 + 指数
+  const pointPos = m[1].length + exp
+  if (pointPos <= 0) return null // 0.00…x 纯小数
+  let digs
+  if (pointPos >= raw.length) digs = raw + '0'.repeat(pointPos - raw.length)
+  else {
+    if (!/^0*$/.test(raw.slice(pointPos))) return null // 移位后仍带小数
+    digs = raw.slice(0, pointPos)
   }
-  // e 记法且总位数远超整数精确范围（如 1e308）是数量级记法，不是整数声称，不查
+  digs = digs.replace(/^0+/, '')
+  // e 记法豁免只剩一条（1.5.14 口径修订）：总位数远超整数精确范围（如 1e308、
+  // 应用自身格式化的 3.69844555555e+34）是数量级记法，不查；≤21 位的整数声称
+  // 不分写法一律核对——1.5.11 曾按「有效数字多即近似记法」豁免 9.007…e15 与
+  // 1.0000000000000005e16，但它们与 900719925474099.3e1（第十份报告 K 案）的
+  // 危害同形：精确值都是 <1e21 的整数、都会被静默换成另一个整数全位显示，
+  // 豁免线按位数划才自洽
   if (m[3] !== undefined && digs.length > 21) return null
   return digs || '0'
 }
@@ -135,12 +145,16 @@ function fact(n) {
 
 function applyFn(name, x, deg, isRad) {
   const useDeg = deg && !isRad
-  if (name === 'sin') return Math.sin(useDeg ? x * Math.PI / 180 : x)
-  if (name === 'cos') return Math.cos(useDeg ? x * Math.PI / 180 : x)
+  // 角度制先 % 360 精确归约再换算（1.5.14）：% 对任意大角度都精确，先乘 π/180
+  // 再交给 Math.sin/cos 时大角度的换算误差会吃掉有效位——sin(3600000000000°)
+  // 曾给 3.15e-6（真值 0）、sin(9007199254740991°) 给 0.5009（真值 sin31°），
+  // ChatGPT 第十份报告实证。归约后小角度路径与旧版逐位一致
+  if (name === 'sin') return Math.sin(useDeg ? (x % 360) * Math.PI / 180 : x)
+  if (name === 'cos') return Math.cos(useDeg ? (x % 360) * Math.PI / 180 : x)
   if (name === 'tan') {
     // 角度制裸数字先走 % 180 精确检查（任意大角度都精确，如 180000090°；弧度近似检查在大 q 时误差会超容差）
     if (useDeg && ((x % 180) + 180) % 180 === 90) throw new Error('undefined')
-    const rad = useDeg ? x * Math.PI / 180 : x
+    const rad = useDeg ? (x % 360) * Math.PI / 180 : x
     // 奇点判定必须落在最终弧度值上（1.5.9 修）：旧版只查角度制裸数字，
     // 带 ° 的输入（° 后缀先把值换算成弧度、isRad=true，useDeg 恒 false）与弧度制 π/2 都绕过检查，
     // Math.tan(π/2) 返回 1.6e16 级大数被当正常结果显示（ChatGPT 第五份报告实证，我上轮探针漏测 ° 路径）。
@@ -164,6 +178,11 @@ function evaluate(src, opts) {
   const toks = tokenize(src)
   if (!toks.length) throw new Error('empty')
   let pos = 0
+  // 整数链污染计数（1.5.14）：中间步骤在 ≥1e21 量级发生整数舍入时不立即报错
+  //（该量级本就按浮点惯例显示），只记污染；若最终结果被带回 <1e21 的精确显示区，
+  // 在 evaluate 结尾统一结算报错。计数制是为了分辨污染来源：×0、^0 等「结果与
+  // 被污染操作数无关」的精确湮灭可凭操作数自身的干净程度清除（见 parseTerm）
+  let intTaint = 0
   function peek() { return pos < toks.length ? toks[pos] : null }
   function next() { return toks[pos++] }
 
@@ -203,12 +222,18 @@ function evaluate(src, opts) {
       else if (op === '²') {
         pctRaw = null
         // 整数平方精确性守卫（1.5.13，与 × 同口径）：装不下精确值且仍在全位显示
-        // 量级（<1e21）时报错，不静默给错整数
-        if (Number.isInteger(v) && Math.abs(v) <= 1e150 && Math.abs(v * v) < 1e21 && twoProdErr(v, v) !== 0) throw new Error('precision')
+        // 量级（<1e21）时报错，不静默给错整数；≥1e21 只记污染（1.5.14）
+        if (Number.isInteger(v) && Math.abs(v) <= 1e150 && isFinite(v * v) && twoProdErr(v, v) !== 0) {
+          if (Math.abs(v * v) < 1e21) throw new Error('precision')
+          intTaint++
+        }
         v = v * v
       }
       else if (op === '!') { pctRaw = null; v = fact(v) }
-      else if (op === '°') { pctRaw = null; v = v * Math.PI / 180; rad = true }
+      // ° 换算前先 % 360 精确归约（1.5.14）：旧版直接乘 π/180，90000090° 的换算
+      // 误差让其弧度值偏离 π/2 奇数倍约 1e-9、绕过 tan 的 1e-13 奇点判据，给出
+      // 5.8e9 的假值（ChatGPT 第十份报告实证）；归约后 rad 恰为 π/2、判据命中
+      else if (op === '°') { pctRaw = null; v = (v % 360) * Math.PI / 180; rad = true }
     }
     return { v: v, pctRaw: pctRaw, rad: rad }
   }
@@ -220,47 +245,76 @@ function evaluate(src, opts) {
       const f = parsePower()
       return { v: tk.t === '-' ? -f.v : f.v, pctRaw: null, rad: f.rad }
     }
+    const tB = intTaint
     const base = parsePostfix()
+    const baseClean = intTaint === tB
     if (peek() && peek().t === '^') {
       next()
+      const tE = intTaint
       const exp = parsePower()
+      const expClean = intTaint === tE
       const v = Math.pow(base.v, exp.v)
       if (isNaN(v)) throw new Error('domain')
       // 整数幂精确性守卫（1.5.13）：结果超出安全整数、又没到科学计数法量级（<1e21）时，
       // 用 BigInt 核对真值（3^40 这类幂本身就算出已舍入的整数）；无 BigInt 保守报错。
-      // 2^53、2^54、10^20 等真值可精确表示的照常放行；≥1e21 按浮点惯例不拦
-      if (Number.isInteger(base.v) && Number.isInteger(exp.v) && exp.v >= 0 && Number.isInteger(v) && Math.abs(v) > 9007199254740991 && Math.abs(v) < 1e21) {
+      // 2^53、2^54、10^20 等真值可精确表示的照常放行；≥1e21 不立即拦、只记污染（1.5.14）
+      if (Number.isInteger(base.v) && Number.isInteger(exp.v) && exp.v >= 0 && Number.isInteger(v) && Math.abs(v) > 9007199254740991) {
         let bad = true
         if (typeof BigInt === 'function') { try { bad = BigInt(base.v) ** BigInt(exp.v) !== BigInt(v) } catch (e) { bad = false } }
-        if (bad) throw new Error('precision')
+        if (bad) {
+          if (Math.abs(v) < 1e21) throw new Error('precision')
+          intTaint++
+        }
       }
+      // 精确湮灭（1.5.14）：指数确为 0 时结果恒 1、底数确为 1 时结果恒 1、底数
+      // 确为 0 时结果恒 0——结果与另一操作数的污染无关，可清本步内的污染
+      //（恢复到 tB，兄弟子式的污染保留）；「确为」以该操作数自身求值期间没
+      // 新增污染为准（被污染凑出来的 0/1 不算）
+      if (v === 1 && ((exp.v === 0 && expClean) || (base.v === 1 && baseClean))) intTaint = tB
+      else if (v === 0 && base.v === 0 && baseClean) intTaint = tB
       return { v: v, pctRaw: null, rad: base.rad || exp.rad }
     }
     return base
   }
   function parseTerm() {
+    const t0 = intTaint
     let left = parsePower()
     let single = true
     while (peek() && (peek().t === '*' || peek().t === '/')) {
       const op = next().t
+      const leftClean = intTaint === t0 // 累积值在本项内没沾新污染（0 才可信）
+      const tR = intTaint
       const right = parsePower()
+      const rightClean = intTaint === tR
       single = false
       if (op === '*') {
         // 整数乘积精确性守卫（1.5.13）：TwoProduct 误差项非零即乘积已被舍入；
         // 结果仍在全位显示量级（<1e21）时报错，不静默给错整数（ChatGPT 第九份报告）；
-        // ≥1e21 进入科学计数法量级、按浮点惯例不拦（与 +/−/^ 守卫同一口径）
+        // ≥1e21 只记污染、由结尾结算（1.5.14，与 +/−/^ 守卫同一口径）
         if (Number.isInteger(left.v) && Number.isInteger(right.v)) {
           const p = left.v * right.v
-          if (isFinite(p) && Math.abs(p) < 1e21 && Math.abs(left.v) <= 1e150 && Math.abs(right.v) <= 1e150 && twoProdErr(left.v, right.v) !== 0) throw new Error('precision')
+          if (isFinite(p) && Math.abs(left.v) <= 1e150 && Math.abs(right.v) <= 1e150 && twoProdErr(left.v, right.v) !== 0) {
+            if (Math.abs(p) < 1e21) throw new Error('precision')
+            intTaint++
+          }
           left = { v: p, pctRaw: null, rad: left.rad || right.rad }
         } else left = { v: left.v * right.v, pctRaw: null, rad: left.rad || right.rad }
+        // 精确湮灭（1.5.14）：任一乘数确为 0（其自身求值没新增污染）时乘积
+        // 恒 0、与另一乘数的污染无关，可清本项内的污染（恢复到 t0，兄弟项的
+        // 污染保留）；被污染凑出来的 0 则不清——(1e21+1−1e21)×5 的真值是 5
+        // 不是 0，不能跟着那个假 0 一起清掉
+        if (left.v === 0 && ((right.v === 0 && rightClean) || leftClean)) intTaint = t0
       }
       else {
         if (right.v === 0) throw new Error('div0')
         // 整除精确性守卫（1.5.13）：商是整数时用乘积误差项反核 q×除数 必须恰好
-        // 等于被除数，否则这个「整数商」是舍入凑出来的，报错
+        // 等于被除数，否则这个「整数商」是舍入凑出来的；<1e21 报错、≥1e21 记污染（1.5.14）
         let qv = left.v / right.v
-        if (Number.isInteger(left.v) && Number.isInteger(right.v) && Number.isInteger(qv) && Math.abs(qv) < 1e21 && Math.abs(qv) <= 1e150 && Math.abs(right.v) <= 1e150 && (twoProdErr(qv, right.v) !== 0 || qv * right.v !== left.v)) throw new Error('precision')
+        if (Number.isInteger(left.v) && Number.isInteger(right.v) && Number.isInteger(qv) && Math.abs(qv) <= 1e150 && Math.abs(right.v) <= 1e150 && (twoProdErr(qv, right.v) !== 0 || qv * right.v !== left.v)) {
+          if (Math.abs(qv) < 1e21) throw new Error('precision')
+          intTaint++
+        }
+        if (qv === 0 && leftClean) intTaint = t0 // 被除数确为 0 时商恒 0，同理清本项污染
         left = { v: qv, pctRaw: null, rad: left.rad || right.rad }
       }
     }
@@ -278,10 +332,14 @@ function evaluate(src, opts) {
       // 整数加减精确性守卫（1.5.13）：9007199254740992+1 旧版静默吞掉 +1、结果还
       // 显示精确等号，(9007199254740992+1)−9007199254740992 因此得 0（真值 1）；
       // TwoSum 误差项非零即和已被舍入（ChatGPT 第九份报告实证）。结果 ≥1e21
-      // 进入科学计数法量级、按浮点惯例不拦
+      // 不立即拦、只记污染（1.5.14）：1e21+1−1e21 曾靠「中间步豁免」把误差带回
+      // 精确区静默给 0（真值 1，第十份报告实证），结尾按污染结算
       if (Number.isInteger(lv) && Number.isInteger(rv)) {
         const s = op === '+' ? lv + rv : lv - rv
-        if (isFinite(s) && Math.abs(s) < 1e21 && twoSumErr(lv, op === '+' ? rv : -rv) !== 0) throw new Error('precision')
+        if (isFinite(s) && twoSumErr(lv, op === '+' ? rv : -rv) !== 0) {
+          if (Math.abs(s) < 1e21) throw new Error('precision')
+          intTaint++
+        }
         lv = s
       } else lv = op === '+' ? lv + rv : lv - rv
       lrad = lrad || right.rad
@@ -291,6 +349,11 @@ function evaluate(src, opts) {
   const out = parseExprW().v
   if (pos !== toks.length) throw new Error('trailing')
   if (typeof out !== 'number' || isNaN(out)) throw new Error('nan')
+  // 整数链污染结算（1.5.14）：链上有过 ≥1e21 量级的整数舍入、最终结果又回到
+  // <1e21 的精确显示区时，这个「整数」已被污染，不能当精确值交出去。
+  // 加减不做湮灭清除：3^50+1−3^50 与 3^50−3^50 在双精度下长得一模一样、
+  // 真值却一个是 1 一个是 0，不可区分时宁可拒绝、不装精确（既定边界）
+  if (intTaint > 0 && Number.isInteger(out) && Math.abs(out) < 1e21) throw new Error('precision')
   return out
 }
 

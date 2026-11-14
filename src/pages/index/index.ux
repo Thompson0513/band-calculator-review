@@ -979,7 +979,9 @@ function autoRange(type, V) {
   return 8
 }
 function isRealCalc(expr) {
-  const t = String(expr).replace(/[eE][+\-−]?\d+/g, '')
+  // 科学计数法只在「数字后跟 e」时才剥离（1.5.14）：旧版无条件剥 e±数字，把
+  // 常数 e 的 e+1、e−1 也当成指数吞掉，这类计算因此漏记历史（ChatGPT 第十份报告实证）
+  const t = String(expr).replace(/\d[eE][+\-−]?\d+/g, '')
   return /[+\-−×÷^%!²°√]|sin\(|cos\(|tan\(|log\(|ln\(|abs\(/.test(t)
 }
 function fmtHistTime(ts) {
@@ -1041,6 +1043,7 @@ export default {
     padPage: 'main',
     justEq: false,
     lastAns: '',
+    ansFull: '',
     hist: [],
     histPage: 0,
     histDisp: [],
@@ -1236,7 +1239,12 @@ export default {
                 return h && typeof h.expr === 'string' && typeof h.res === 'string' &&
                   h.expr.length <= 200 && h.res.length <= 100 && isRealCalc(h.expr)
               }).map(function (h) {
-                return { expr: h.expr, res: h.res, sgn: h.sgn, ts: (Number.isFinite(h.ts) && Math.abs(h.ts) <= 8640000000000000) ? h.ts : 0 }
+                const o = { expr: h.expr, res: h.res, sgn: h.sgn, ts: (Number.isFinite(h.ts) && Math.abs(h.ts) <= 8640000000000000) ? h.ts : 0 }
+                // 全精度回读串 rf（1.5.14）：合法才保留——这层重组若漏带 rf，
+                // 历史回算会在重启后悄悄退回 12 位文本（自攻实测抓到）；旧记录
+                // 没有 rf 时 useHist 自动回退显示文本
+                if (typeof h.rf === 'string' && h.rf.length > 0 && h.rf.length <= 30 && isFinite(Number(h.rf))) o.rf = h.rf
+                return o
               }).slice(0, 10)
               self.refreshHistDisp()
             }
@@ -1405,6 +1413,17 @@ export default {
     this.evalSrc = src
     try {
       const v = calc.evaluate(src, { deg: this.degMode })
+      if (!isFinite(v)) {
+        // 求值溢出（如 0^-1、1e308×10）是错误状态不是结果（1.5.14）：旧版经
+        // formatPlain 拼成「≈ 溢出」却仍 previewOk、按正常结果色显示，按 = 又
+        // 被拒绝，状态自相矛盾（ChatGPT 第十份报告实证）；按错误状态处理
+        this.previewOk = false
+        this.previewVal = v
+        this.resDisp = '溢出'
+        this.resPx = 36
+        this.canFrac = false
+        return
+      }
       this.previewOk = true
       this.previewVal = v
       const frac = calc.toFraction(v)
@@ -1458,14 +1477,18 @@ export default {
       const hasOp = isRealCalc(exprStr)
       const dup = this.hist.length > 0 && this.hist[0].expr === exprStr && this.hist[0].res === resStr
       if (hasOp && !dup) {
-        this.hist.unshift({ expr: exprStr, res: resStr, sgn: calc.eqSign(val, resStr), ts: Date.now(), time: fmtHistTime(Date.now()) })
+        this.hist.unshift({ expr: exprStr, res: resStr, rf: String(val), sgn: calc.eqSign(val, resStr), ts: Date.now(), time: fmtHistTime(Date.now()) })
         this.hist = this.hist.slice(0, 10)
         this.saveHist()
         this.histPage = 0
         this.refreshHistDisp()
       }
+      // 全精度接力（1.5.14）：接力与 Ans 用原始双精度值的回读串，不用 12 位
+      // 显示文本——旧版按 = 后接着 ×3，10÷3 得 9.99999999999、一次输完却得
+      // 10（ChatGPT 第十份报告实证）。lastAns 保持 12 位文本仅作兼容，实际取 ansFull
       this.lastAns = plain
-      this.expr = dispNum(plain)
+      this.ansFull = String(val)
+      this.expr = dispNum(String(val))
       this.fracOn = false
       this.justEq = true
       this.refreshCalc()
@@ -1473,7 +1496,7 @@ export default {
     }
     if (v === 'ans') {
       if (!this.lastAns) return
-      const a = dispNum(this.lastAns)
+      const a = dispNum(this.ansFull || this.lastAns)
       const last = this.expr.slice(-1)
       if (last && VAL_END.indexOf(last) >= 0) this.expr += '×' + a
       else this.expr += a
@@ -1550,7 +1573,8 @@ export default {
     this.buzz()
     if (!item || typeof item.res !== 'string') return
     if (this.gatePaid()) return
-    this.expr = dispNum(item.res.replace(/,/g, ''))
+    // 点历史回算优先用记录里的全精度值（1.5.14，旧记录没有 rf 时回退显示文本）
+    this.expr = dispNum(item.rf || item.res.replace(/,/g, ''))
     this.fracOn = false
     this.justEq = true
     this.view = 'calc'
@@ -1936,18 +1960,24 @@ export default {
               }
             } catch (e5) {}
           }
-          let Ax = A, Bx = B
-          if (vB16x !== null) Ax = (vB16x - c00) / 65536; else if (v512x !== null) Ax = (v512x - c00) / 512
-          if (vB16y !== null) Bx = (vB16y - c00) / 65536; else if (v512y !== null) Bx = (v512y - c00) / 512
-          const fits = (Aa, Bb) => {
+          let Ax = A, Bx = B, Dx = 1, Dy = 1
+          if (vB16x !== null) { Ax = (vB16x - c00) / 65536; Dx = 65536 } else if (v512x !== null) { Ax = (v512x - c00) / 512; Dx = 512 }
+          if (vB16y !== null) { Bx = (vB16y - c00) / 65536; Dy = 65536 } else if (v512y !== null) { Bx = (v512y - c00) / 512; Dy = 512 }
+          // 逐点容差 1.5.14 收紧：旧版 16·EPSILON·Sside·(1+|x|+|y|) 把 Sside（被大
+          // 常数撑到 1e9）再乘探针坐标，(512,512) 处容差达 3.6，x+1e-8xy=1e9 的
+          // 交叉项偏差 0.0026 被整个吞掉、误判一次方程组（ChatGPT 第十份报告
+          // 实证）。新容差两项：求值噪声按预测式各项量级走（32·EPSILON·各项和），
+          // 系数估计误差按其推导尺度 D 折算（大尺度差分估出的系数误差小 D 倍）
+          const fits = (Aa, Bb, Dd) => {
             for (let pi = 0; pi < probes.length; pi++) {
-              const tol = 16 * Number.EPSILON * Sside * (1 + Math.abs(probes[pi][0]) + Math.abs(probes[pi][1])) + 1e-12 * Math.abs(vals[pi])
-              if (Math.abs(vals[pi] - (Aa * probes[pi][0] + Bb * probes[pi][1] + c00)) > tol) return false
+              const px = probes[pi][0], py = probes[pi][1]
+              const tol = 32 * Number.EPSILON * (Math.abs(vals[pi]) + Math.abs(c00) + Math.abs(Aa * px) + Math.abs(Bb * py)) + 16 * Number.EPSILON * Sside * (Math.abs(px) + Math.abs(py)) / Dd + 1e-13 * Math.abs(vals[pi])
+              if (Math.abs(vals[pi] - (Aa * px + Bb * py + c00)) > tol) return false
             }
             return true
           }
-          if (fits(Ax, Bx)) return { A: Ax, B: Bx, C: c00 }
-          if ((Ax !== A || Bx !== B) && fits(A, B)) return { A: A, B: B, C: c00 }
+          if (fits(Ax, Bx, Math.min(Dx, Dy))) return { A: Ax, B: Bx, C: c00 }
+          if ((Ax !== A || Bx !== B) && fits(A, B, 1)) return { A: A, B: B, C: c00 }
           return null
         }
         const c1 = coef(raw1), c2 = coef(raw2)
@@ -1979,9 +2009,15 @@ export default {
           // 0.1+0.2=0.3 这类 1~2 ulp 的经典残差）；一边为零时只吸收 ≤6e-17 的
           // 相消尾巴（0.1+0.2−0.3=5.55e-17），1e-16 起一律判不相等
           const scMax = Math.max(Math.abs(lv), Math.abs(rv))
-          const isEq = (lv !== 0 && rv !== 0)
+          // 两边都是单个数字字面量时按值全等比（1.5.14）：0=0.00000000000000001
+          // 里的 1e-17 是用户写明的数、不是相消尾巴，旧版一律 ≤6e-17 吸收、误判
+          // 恒等式（ChatGPT 第十份报告实证）；含运算的式子才走 ulp/尾巴容差，
+          // 0.1+0.2=0.3 这类经典残差不受影响
+          const litRe = /^[+\-−]?(\d+\.?\d*|\.\d+)([eE][+\-−]?\d+)?$/
+          const bothLit = litRe.test(parts[0].trim()) && litRe.test(parts[1].trim())
+          const isEq = bothLit ? lv === rv : ((lv !== 0 && rv !== 0)
             ? Math.abs(lv - rv) <= 3 * Number.EPSILON * scMax
-            : scMax <= 6e-17
+            : scMax <= 6e-17)
           if (isEq) this.eqLines = ['两边相等：恒等式']
           else {
             let ll = ansStr('左边', lv, 26), rl = ansStr('右边', rv, 26)
@@ -2072,6 +2108,25 @@ export default {
       const fitBad = (t, v) => Math.abs(v - (a * t * t + b * t + c)) > 1e-12 * (Sside + Math.abs(v - c)) + aErr * t * t + bErr * Math.abs(t)
       for (let ci = 0; ci < chkT.length; ci++) if (fitBad(chkT[ci], chkV[ci])) { notPoly(); return }
       for (let li = 0; li < ladT.length; li++) if (ladV[li] !== null && fitBad(ladT[li], ladV[li])) { notPoly(); return }
+      if (a === 0 && b === 0 && c !== 0) {
+        // 极端尺度救援（1.5.14）：系数小到在全部探针尺度（≤2^24）上被大常数的
+        // 求值噪声淹没时（如 0.000000000000001x=1000000000，x 项贡献 ≤1.7e-8、
+        // 小于 ulp(1e9)），采样判「与 x 无关」直接报无解是错判——式子明明含 x。
+        // 往 1e30/1e100 再探：随 x 显著增长且呈一次型的，用极端尺度差分估 b
+        // 求根；呈高次型的如实报不支持；毫无变化（x−x=5 里 x 真约掉）维持无解
+        try {
+          const v1 = g(1e30), v2 = g(1e100)
+          const d1 = v1 - c, d2 = v2 - c
+          // 显著性按 1e30 处的求值量级判：按 1e100 处的量级判会把门槛随增长
+          // 本身抬过头（1e85 量级直接把 1e15 的一次项信号判死）
+          const sig = 1e-9 * Math.max(Math.abs(c), Math.abs(v1))
+          if (isFinite(d1) && isFinite(d2) && Math.abs(d1) > sig && Math.abs(d2) > 100 * Math.abs(d1)) {
+            const ratio = Math.abs(d2 / d1)
+            if (ratio > 1e67 && ratio < 1e73) b = d1 / 1e30
+            else { notPoly(); return }
+          }
+        } catch (e6) {}
+      }
       const r = calc.solveQuad(a, b, c)
       if (r.error) { this.eqLines = [r.error]; return }
       const head = fmtPolyFit(a, b, c)
@@ -2109,7 +2164,14 @@ export default {
     if (r.error) { this.fLines = [r.error]; return }
     const lines = ['= ' + (r.d === 1 ? String(r.n) : r.n + '/' + r.d)]
     if (r.mixed) lines.push('带分数：' + r.mixed.w + ' 又 ' + r.mixed.n + '/' + r.mixed.d)
-    lines.push('小数 ≈ ' + calc.formatDisplay(parseFloat(r.dec.toPrecision(6))))
+    // 小数行连接号（1.5.14）：约分后的分母只含 2、5 因子时小数位数有限，且
+    // 页面显示的 6 位有效数字与真值回读一致，才算精确小数用「=」；1/2+1/2
+    // 旧版显示「小数 ≈ 1」，与全应用「精确用 =」的口径冲突（第十份报告观察项）
+    let dd = r.d
+    while (dd % 2 === 0) dd /= 2
+    while (dd % 5 === 0) dd /= 5
+    const decShown = parseFloat(r.dec.toPrecision(6))
+    lines.push('小数 ' + (dd === 1 && decShown === r.dec ? '= ' : '≈ ') + calc.formatDisplay(decShown))
     this.fLines = lines
   },
   fracPad(v) {
@@ -2210,6 +2272,33 @@ export default {
     }
   },
   buildPlot(cfg) {
+    // 扁平失真自动扩窗（1.5.14）：顶点量级极端时（如 a=0.001、b=999999999 的
+    // 抛物线，顶点 y≈−2.5e20），顶点附近窗口内函数值的变化小于双精度在该量级
+    // 的分辨率，采样点纵坐标全同、画成一条假水平线（ChatGPT 第十份报告实证）。
+    // 先探一遍：纵向变化 ≤8·EPSILON·量级视为「双精度下没变化」，以窗口中心为
+    // 轴逐级 ×8 扩窗再探（上限 6 次）；真常数函数扩窗后仍扁平，照原窗口画其
+    // 水平线（那是真形状）
+    const probeFlat = (x0, x1) => {
+      let mn = Infinity, mx = -Infinity, n = 0
+      for (let i = 0; i <= 30; i++) {
+        let y
+        try { y = cfg.f(x0 + (x1 - x0) * i / 30) } catch (e) { continue }
+        if (typeof y !== 'number' || !isFinite(y)) continue
+        if (y < mn) mn = y
+        if (y > mx) mx = y
+        n++
+      }
+      if (n < 2) return false
+      return (mx - mn) <= 8 * Number.EPSILON * Math.max(Math.abs(mn), Math.abs(mx), 1)
+    }
+    if (probeFlat(cfg.x0, cfg.x1)) {
+      const cMid = (cfg.x0 + cfg.x1) / 2
+      let half = (cfg.x1 - cfg.x0) / 2
+      for (let k = 0; k < 6; k++) {
+        half *= 8
+        if (!probeFlat(cMid - half, cMid + half)) { cfg = Object.assign({}, cfg, { x0: cMid - half, x1: cMid + half }); break }
+      }
+    }
     const N = 90
     let ymin = Infinity, ymax = -Infinity
     // 采样值上限改自适应（1.5.12）：旧版固定 |y|≤1e6 把大斜率直线（y=1e8x+1e8）、
@@ -2236,8 +2325,11 @@ export default {
       if (pt.y > ymax) ymax = pt.y
     }
     if (pts.length < 2) return false
-    if (ymin > 0) ymin = 0
-    if (ymax < 0) ymax = 0
+    // 纵轴强行纳入 0 只在 0 离数据范围不远时做（1.5.14）：顶点在 −2.5e20 的
+    // 抛物线若强行把范围拉到 0，1e6 级的真实起伏又被压回一条线（与扩窗同源）
+    const spanY0 = ymax - ymin
+    if (ymin > 0 && ymin <= spanY0 * 4) ymin = 0
+    if (ymax < 0 && -ymax <= spanY0 * 4) ymax = 0
     // 关键点纳入纵轴范围（1.5.10）：采样步长照不到的极值关键点（如 sin 的 90° 峰值不在 8° 采样格上）
     // 旧版靠 8% 留白偶然兜住；纳入后再加留白，保证关键点结构上不被范围过滤掉。
     for (const kp of (cfg.keyPts || [])) {
