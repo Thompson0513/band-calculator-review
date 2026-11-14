@@ -39,6 +39,24 @@
 //      regression-1.5.18 §6c 最坏标签长度 21 → 6（同上）
 //      regression-1.5.16 §12a 最坏标签长度 21 → 6（同上）
 //      regression-1.5.17 §7b 最坏标签长度 21 → 6（同上）
+//  修订四 · 标签盒太窄、长标签折行（B-03 布局的最后一截）：修订三把标签
+//    文本缩短了（H 例 X 7 字 / Y 9 字），但绘图页模板里标签盒仍写死
+//    X 24px / Y 26px——9 字塞进 26px 盒在 velasim 复拍中仍折成两三截
+//    竖排；且这是通病：任何 Y 标签 >5 字（如 −8×10¹⁹）都会中招。修法
+//    （只动 buildPlot 标签几何＋模板两处 width 绑定）：标签项新增 lw
+//    字段，盒宽按字数给——labW：≤4 字回到旧盒宽（X 24 / Y 26，短标签
+//    的 ll/lt/ta 与旧版逐字一致，§10d 钉三基线全项原文）；>4 字按
+//    6px/字＋8px 余量（tick-lab 10px 字号，数字/符号约 6px/字、上标更
+//    窄）。X 居中标签以刻度点为中心展开、ll 钳在绘图区 [0, 312−lw]；
+//    Y 右对齐标签盒右缘锚定轴线左侧 5px（baseL−5）向左展开，左端放
+//    不下时 ll 钳到 0 并把盒宽收至锚点（右缘/右对齐不变、字不跨轴压
+//    曲线；代价是该极端下盒宽小于估宽，靠上标实际窄于 6px/字的余量
+//    兜底，§10g 钉该钳制形态）；Y 左对齐标签（轴在左缘外、baseL<36）
+//    ll 不变、只给宽。H 例实测：X 项 ll/lw = 129/50、Y 项 15/62
+//    （§10a/10b 钉原文）。H 例 Y 轴不在画面内（plotAxisL=−10、回退
+//    baseL=10），其 Y 标签是左对齐变体、锚在 baseL+5 向右展开——简报
+//    「Y 标签右缘 ≤ 轴线位置」对右对齐变体的约束由 §10e 钉住（三基
+//    线全部右对齐 Y 标签 ll+lw == plotAxisL−5）。既有断言修订：零。
 //  修复一（P1）求值层吸附误吞真实小差值：1.5.18 的吸附只有相对阈值
 //    （|结果| ≤ max(|左|,|右|)×2^-50 → 归零），用户手打字面量的精确差
 //    一并被吞：1.0000000000000002−1 求值给 0（真值 2^-52，Sterbenz 条
@@ -73,6 +91,7 @@
 //       5 B-02 合成量程＋基线 6 版本锁与落点审计
 //       7 同版修订一（显示层精确微差救援）8 同版修订二（绘图卡死守卫）
 //       9 同版修订三（极端尺度短标签封顶）
+//       10 同版修订四（标签盒宽按字数给足）
 import { readFileSync } from 'fs'
 import calc from '../src/common/calc.js'
 
@@ -287,6 +306,46 @@ eq('9i fmtTick H 例 X 刻度（步长 1e4）直钉', fmtTick9(-500000030000, 10
   eq('9j 中等尺度不封顶：1e9 量级步长 2e-4 标签逐字不变（1.5.16 §7a 同款）', JSON.stringify(vs.map((v) => fmtTick9(v, 0.0002))), JSON.stringify(['9.999999999998×10⁸', '9.999999999999×10⁸', '1×10⁹', '1.0000000000001×10⁹', '1.0000000000002×10⁹']))
 }
 ok('9k 封顶落点（|E|≥10 → digs≤5）', ux.includes('if (Math.abs(E) >= 10 && digs > 5) digs = 5'))
+
+// ---------- 10) 同版修订四：标签盒宽按字数给足（单行盒） ----------
+// H 例两轴每项 ll/lw 实测（本轮）：X '−5×10¹¹' ll=129 lw=50（以刻度点
+// cx=154 为中心展开）；Y '−2.5×10²⁰' ll=15 lw=62（左对齐变体、ll 不变）。
+// 估宽口径 = 字数×6px（lw 在此之上再＋8 余量，故 lw ≥ 估宽恒成立）。
+{
+  const h = drawPlot('quad2', { a: '0.001', b: '999999999', c: '0', k: '1', A: '1' })
+  eq('10a H 例 X 标签项原文（ll/lw）', JSON.stringify(h.plotLabX.map((t) => [t.lab, t.ll, t.lw, t.ta])), JSON.stringify([['−5×10¹¹', 129, 50, 'center']]))
+  eq('10b H 例 Y 标签项原文（ll/lw）', JSON.stringify(h.plotLabY.map((t) => [t.lab, t.ll, t.lw, t.ta])), JSON.stringify([['−2.5×10²⁰', 15, 62, 'left']]))
+  ok('10c H 例两轴单行盒：lw ≥ 6px/字估宽且 ll ≥ 0', h.plotLabX.concat(h.plotLabY).every((t) => t.lw >= t.lab.length * 6 && t.ll >= 0 && t.ll + t.lw <= 312))
+}
+{
+  // 短标签（≤4 字）基线全项逐字不变：ll/lt/ta 与改前一致、lw 回旧盒宽
+  const q = drawPlot('quad2', { a: '1', b: '2', c: '1', k: '1', A: '1' })
+  const l = drawPlot('lin2', { a: '1', b: '1', c: '0', k: '2', A: '1' })
+  const s = drawPlot('sin', { a: '1', b: '0', c: '0', k: '1', A: '1' })
+  const proj = (arr) => arr.map((t) => [t.lab, t.ll, t.lt, t.ta, t.lw])
+  eq('10d-1 正常二次 labX 全项不变', JSON.stringify(proj(q.plotLabX)), JSON.stringify([['−4', 35, 273, 'center', 24], ['−3', 71, 273, 'center', 24], ['−2', 108, 273, 'center', 24], ['−1', 144, 273, 'center', 24], ['1', 217, 273, 'center', 24], ['2', 254, 273, 'center', 24], ['0', 197, 273, 'left', 24]]))
+  eq('10d-2 正常二次 labY 全项不变', JSON.stringify(proj(q.plotLabY)), JSON.stringify([['2', 162, 233, 'right', 26], ['4', 162, 202, 'right', 26], ['6', 162, 172, 'right', 26], ['8', 162, 142, 'right', 26], ['10', 162, 112, 'right', 26], ['12', 162, 82, 'right', 26], ['14', 162, 51, 'right', 26], ['16', 162, 21, 'right', 26]]))
+  eq('10d-3 正常一次 labX 全项不变', JSON.stringify(proj(l.plotLabX)), JSON.stringify([['−3', 35, 167, 'center', 24], ['−2', 71, 167, 'center', 24], ['−1', 108, 167, 'center', 24], ['1', 181, 167, 'center', 24], ['2', 217, 167, 'center', 24], ['3', 254, 167, 'center', 24], ['0', 160, 167, 'left', 24]]))
+  eq('10d-4 正常一次 labY 全项不变', JSON.stringify(proj(l.plotLabY)), JSON.stringify([['−6', 125, 248, 'right', 26], ['−4', 125, 217, 'right', 26], ['−2', 125, 187, 'right', 26], ['2', 125, 127, 'right', 26], ['4', 125, 97, 'right', 26], ['6', 125, 67, 'right', 26], ['8', 125, 36, 'right', 26], ['10', 125, 6, 'right', 26]]))
+  eq('10d-5 正常正弦 labX 全项不变', JSON.stringify(proj(s.plotLabX)), JSON.stringify([['−300', 22, 152, 'center', 24], ['−200', 63, 152, 'center', 24], ['−100', 103, 152, 'center', 24], ['100', 185, 152, 'center', 24], ['200', 225, 152, 'center', 24], ['300', 266, 152, 'center', 24], ['0', 160, 152, 'left', 24]]))
+  eq('10d-6 正常正弦 labY 全项不变', JSON.stringify(proj(s.plotLabY)), JSON.stringify([['−1', 125, 263, 'right', 26], ['−0.8', 125, 238, 'right', 26], ['−0.6', 125, 214, 'right', 26], ['−0.4', 125, 190, 'right', 26], ['−0.2', 125, 166, 'right', 26], ['0.2', 125, 118, 'right', 26], ['0.4', 125, 94, 'right', 26], ['0.6', 125, 70, 'right', 26], ['0.8', 125, 46, 'right', 26], ['1', 125, 21, 'right', 26]]))
+  // 右对齐 Y 标签右缘恒在轴线左侧 5px（ll+lw == plotAxisL−5）
+  ok('10e 三基线右对齐 Y 标签右缘 == 轴线−5', [q, l, s].every((i) => i.plotLabY.every((t) => t.ta !== 'right' || t.ll + t.lw === i.plotAxisL - 5)))
+}
+{
+  // 右支加宽：轴居中、Y 长标签（1e19 量级）盒按字数展开、右缘仍锚 −5
+  const r = buildSynth((x) => x * 1e19, -8, 8)
+  ok('10f-1 右支长标签 lw 按字数（7 字 → 50）', r.plotLabY.some((t) => t.lab === '−8×10¹⁹' && t.lw === 50 && t.ll === 101))
+  ok('10f-2 右支全部标签右缘 == 轴线−5 且单行盒（lw ≥ 估宽）', r.plotLabY.every((t) => t.ll + t.lw === r.plotAxisL - 5 && t.lw >= t.lab.length * 6))
+  // 右支钳制：轴靠左（baseL=48）、7 字标签估宽 50 放不下 → ll 钳 0、盒宽收至锚点 43、右缘仍 == 轴线−5
+  const c = buildSynth((x) => x * 1e19, -1.2, 8)
+  ok('10g 右支钳制形态（ll=0、lw=锚点宽 43、右缘 == 轴线−5）', c.plotLabY.length > 0 && c.plotLabY.every((t) => t.ll === 0 && t.lw === 43 && t.ll + t.lw === c.plotAxisL - 5))
+  // 合成量程（左支）：ll 不变、仅给宽
+  const b = buildSynth((x) => x, 999999999999997, 1000000000000007)
+  eq('10h 合成量程 X/Y 项（ll 不变、lw 按字数）', JSON.stringify(b.plotLabX.concat(b.plotLabY).map((t) => [t.lab, t.ll, t.lw])), JSON.stringify([['1×10¹⁵', 192, 44], ['1×10¹⁵', 15, 44]]))
+}
+ok('10i 估宽落点（labW）', ux.includes('const labW = function (lab, base) { return lab.length <= 4 ? base : lab.length * 6 + 8 }'))
+ok('10j 模板 width 绑 lw（X/Y 两处、无写死 24/26px 残留）', ux.includes('for="{{plotLabX}}" style="left: {{$item.ll}}px; top: {{$item.lt}}px; width: {{$item.lw}}px;') && ux.includes('for="{{plotLabY}}" style="left: {{$item.ll}}px; top: {{$item.lt}}px; width: {{$item.lw}}px;') && !ux.includes('width: 24px; text-align: {{$item.ta}}') && !ux.includes('width: 26px; text-align: {{$item.ta}}'))
 
 console.log('regression-1.5.19: pass=' + pass + ' fail=' + fail)
 if (fail) process.exit(1)

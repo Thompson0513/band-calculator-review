@@ -418,8 +418,8 @@
         <div class="axis-x" style="top: {{plotAxisT}}px;"></div>
         <div class="tick-x" for="{{plotTickX}}" style="left: {{$item.ml}}px; top: {{$item.mt}}px;"></div>
         <div class="tick-y" for="{{plotTickY}}" style="left: {{$item.ml}}px; top: {{$item.mt}}px;"></div>
-        <text class="tick-lab" for="{{plotLabX}}" style="left: {{$item.ll}}px; top: {{$item.lt}}px; width: 24px; text-align: {{$item.ta}};">{{$item.lab}}</text>
-        <text class="tick-lab" for="{{plotLabY}}" style="left: {{$item.ll}}px; top: {{$item.lt}}px; width: 26px; text-align: {{$item.ta}};">{{$item.lab}}</text>
+        <text class="tick-lab" for="{{plotLabX}}" style="left: {{$item.ll}}px; top: {{$item.lt}}px; width: {{$item.lw}}px; text-align: {{$item.ta}};">{{$item.lab}}</text>
+        <text class="tick-lab" for="{{plotLabY}}" style="left: {{$item.ll}}px; top: {{$item.lt}}px; width: {{$item.lw}}px; text-align: {{$item.ta}};">{{$item.lab}}</text>
         <div class="dot" for="{{plotPts}}" style="left: {{$item.l}}px; top: {{$item.t}}px;"></div>
         <div class="dot dot-key" for="{{plotKeyPts}}" style="left: {{$item.l}}px; top: {{$item.t}}px;"></div>
       </div>
@@ -2578,6 +2578,14 @@ export default {
       for (let i2 = 1; i2 < labs.length; i2++) if (labs[i2].lab === labs[i2 - 1].lab) return true
       return false
     }
+    // 标签盒宽（1.5.19 同版修订四）：修订三把标签文本缩短了，但模板里
+    // 标签盒仍写死 X 24px / Y 26px——9 字标签（如 −2.5×10²⁰）塞进
+    // 26px 盒仍折成两三截竖排（velasim 复拍实证；凡 Y 标签 >5 字都中
+    // 招、不止 H 例）。盒宽改在生成标签时按字数给出（模板 width 绑
+    // $item.lw）：tick-lab 为 10px 字号，数字/符号约 6px/字、上标更
+    // 窄，按 6px/字估算＋8px 余量即单行有余；≤4 字回到旧盒宽
+    // （X 24 / Y 26），短标签的 ll/lt/ta 与旧版逐字一致
+    const labW = function (lab, base) { return lab.length <= 4 ? base : lab.length * 6 + 8 }
     let stepX = niceStep(x1 - x0, 8)
     let stepY = niceStep(ymax - ymin, 8)
     let tX = [], tY = [], lX = [], lY = []
@@ -2596,7 +2604,14 @@ export default {
         if (v === 0) continue
         const cx = px(v)
         tX.push({ ml: cx, mt: baseT - 3 })
-        if (cx >= 14 && cx <= 298) lX.push({ lab: fmtTick(v, stepX), ll: cx - 12, lt: baseT <= H - 24 ? baseT + 4 : baseT - 15, ta: 'center' })
+        if (cx >= 14 && cx <= 298) {
+          // 居中标签以刻度点为中心按盒宽展开、ll 钳在绘图区内（修订四）
+          const labX = fmtTick(v, stepX), lwX = labW(labX, 24)
+          let llX = cx - lwX / 2
+          if (llX < 0) llX = 0
+          if (llX > W - lwX) llX = W - lwX
+          lX.push({ lab: labX, ll: llX, lt: baseT <= H - 24 ? baseT + 4 : baseT - 15, ta: 'center', lw: lwX })
+        }
       }
       if (!labDup(lX) || lX.length <= 2) break
       stepX *= 2
@@ -2620,15 +2635,23 @@ export default {
         const cy = py(v)
         tY.push({ ml: baseL - 3, mt: cy })
         if (cy >= 6 && cy <= 282) {
-          if (baseL >= 36) lY.push({ lab: fmtTick(v, stepY), ll: baseL - 31, lt: cy - 6, ta: 'right' })
-          else lY.push({ lab: fmtTick(v, stepY), ll: baseL + 5, lt: cy - 6, ta: 'left' })
+          const labY = fmtTick(v, stepY), lwY = labW(labY, 26)
+          if (baseL >= 36) {
+            // 右对齐标签：盒右缘锚定轴线左侧 5px（baseL − 5）、盒向左
+            // 展开（修订四）。左端放不下时 ll 钳到 0 并把盒宽收至锚点
+            // ——右缘与右对齐不变，字不跨轴压曲线；代价是该极端下盒宽
+            // 小于估宽、靠上标实际窄于 6px/字的余量兜底（见修订四头注）
+            let llY = baseL - 5 - lwY, wY = lwY
+            if (llY < 0) { llY = 0; wY = baseL - 5 }
+            lY.push({ lab: labY, ll: llY, lt: cy - 6, ta: 'right', lw: wY })
+          } else lY.push({ lab: labY, ll: baseL + 5, lt: cy - 6, ta: 'left', lw: lwY })
         }
       }
       if (!labDup(lY) || lY.length <= 2) break
       stepY *= 2
     }
     if (labDup(lY)) lY = [lY[Math.floor(lY.length / 2)]] // 同 X 轴兜底（1.5.19）
-    if (this.plotAxisL >= 0 && this.plotAxisT >= 0) lX.push({ lab: '0', ll: this.plotAxisL + 4, lt: this.plotAxisT + 4, ta: 'left' })
+    if (this.plotAxisL >= 0 && this.plotAxisT >= 0) lX.push({ lab: '0', ll: this.plotAxisL + 4, lt: this.plotAxisT + 4, ta: 'left', lw: labW('0', 24) })
     this.plotTickX = tX
     this.plotTickY = tY
     this.plotLabX = lX
