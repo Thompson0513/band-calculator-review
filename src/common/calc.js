@@ -72,8 +72,16 @@ function applyFn(name, x, deg, isRad) {
   if (name === 'sin') return Math.sin(useDeg ? x * Math.PI / 180 : x)
   if (name === 'cos') return Math.cos(useDeg ? x * Math.PI / 180 : x)
   if (name === 'tan') {
-    if (useDeg && ((x % 180) + 180) % 180 === 90) throw new Error('undefined')
-    return Math.tan(useDeg ? x * Math.PI / 180 : x)
+    const rad = useDeg ? x * Math.PI / 180 : x
+    // 奇点判定必须落在最终弧度值上（1.5.9 修）：旧版只查角度制裸数字，
+    // 带 ° 的输入（° 后缀先把值换算成弧度、isRad=true，useDeg 恒 false）与弧度制 π/2 都绕过检查，
+    // Math.tan(π/2) 返回 1.6e16 级大数被当正常结果显示（ChatGPT 第五份报告实证，我上轮探针漏测 ° 路径）。
+    // 判据：rad/(π/2) 距最近奇整数 <1e-12（90°/270°/450°/3π/2 的 q 实测恰为整数，留足余量；
+    // 89.9999999999° 的 q 距 1 为 1.1e-12，不误伤合法大值）。
+    const q = rad / (Math.PI / 2)
+    const k = Math.round(q)
+    if (Math.abs(q - k) < 1e-12 && Math.abs(k % 2) === 1) throw new Error('undefined')
+    return Math.tan(rad)
   }
   if (name === 'log') { if (x <= 0) throw new Error('domain'); return Math.log10(x) }
   if (name === 'ln') { if (x <= 0) throw new Error('domain'); return Math.log(x) }
@@ -280,6 +288,8 @@ function reduceFrac(n, d) {
 // 返回 {n, d（已约分）, dec, mixed:{w,n,d}|null} 或 {error}
 function fracCalc(n1, d1, op, n2, d2) {
   if (![n1, d1, n2, d2].every(Number.isInteger)) return { error: '请输入整数' }
+  // 入口安全整数检查（1.5.9）：超安全范围的输入在解析阶段已被舍入，结果后检拦不住「算的是另一个数」
+  if (![n1, d1, n2, d2].every(Number.isSafeInteger)) return { error: '数字太大，超出精确计算范围' }
   if (d1 === 0 || d2 === 0) return { error: '分母不能为 0' }
   let n, d
   // 先约分再乘（1.5.8）：乘除先交叉约分、加减先用分母 gcd 缩小中间乘积，
@@ -317,6 +327,8 @@ function fracCalc(n1, d1, op, n2, d2) {
 
 function gcdLcm(a, b) {
   if (!Number.isInteger(a) || !Number.isInteger(b)) return { error: '请输入整数' }
+  // 入口安全整数检查（1.5.9）：isInteger 不保证精度，2^53 这类已失精的整数曾被直接算 gcd 返回
+  if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b)) return { error: '数字太大，超出精确计算范围' }
   if (a === 0 && b === 0) return { error: '不能两个都是 0' }
   const g = gcd(a, b)
   if (g === 0) return { gcd: 0, lcm: 0 }

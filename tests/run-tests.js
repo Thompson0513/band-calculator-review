@@ -98,10 +98,12 @@ function loadEsm(p) {
   new Function('module', 'exports', s)(m, m.exports)
   return m.exports
 }
-const paykey = loadEsm(path.join(__dirname, '../src/common/paykey.js'))
-const ppkey = loadEsm('/home/hatch/workspace/band-apps/pp-clean/src/common/key.js')
+// [审查仓适配] paykey.js（及乒乓 key.js）未公开：缺失时收费系统三节跳过并打印 SKIP，其余断言用惰性桩拼装页面后照常运行。本地原版无此回退。
+let paykey = null, ppkey = null
+try { paykey = loadEsm(path.join(__dirname, '../src/common/paykey.js')) } catch (e) {}
+try { ppkey = loadEsm('/home/hatch/workspace/band-apps/pp-clean/src/common/key.js') } catch (e) {}
 const MOCK_ID = '0123456789abcdeffedcba9876543210'
-globalThis.__paykey = paykey
+globalThis.__paykey = paykey || { keyMatches: () => false, normalizeDeviceId: (x) => String(x == null ? '' : x).toUpperCase(), shortCodeForDevice: () => 'AAAAAA' }
 globalThis.__device = { getDeviceId(o) { o.success({ deviceId: MOCK_ID }) } }
 script = script
   .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
@@ -209,6 +211,31 @@ ok('小函数 y 出现小数刻度', inst.plotLabY.some(t => t.lab.indexOf('.') 
 inst.buildPlot({ f: function (x) { return x }, x0: -360, x1: 360, title: 't', keyPts: [], lines: [], back: 'tools' })
 eq('角度范围 x 每 100 一格（6 个）', inst.plotTickX.length, 6)
 
+// [审查仓适配] makeInst 提前定义，使其不被下面的条件块包裹
+function makeInst(deviceImpl, store) {
+  let s = fs.readFileSync(path.join(__dirname, '../src/pages/index/index.ux'), 'utf8')
+  s = s.slice(s.indexOf('<script>') + 8, s.indexOf('</script>'))
+  globalThis.__storage = { get(o) { o.success(store[o.key] || '') }, set(o) { store[o.key] = o.value } }
+  globalThis.__device = deviceImpl
+  s = s.replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
+    .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
+    .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
+    .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
+    .replace('export default', 'module.exports =')
+  const mm = { exports: {} }
+  new Function('module', 'exports', s)(mm, mm.exports)
+  const d = mm.exports
+  const it = {}
+  Object.assign(it, JSON.parse(JSON.stringify(d.data)))
+  for (const k of Object.keys(d)) if (typeof d[k] === 'function') it[k] = d[k].bind(it)
+  it.onInit()
+  return it
+}
+// [审查仓适配] 设备 mock 提前定义（后续独立小节也用）
+const goodDevice = { getDeviceId(o) { o.success({ deviceId: MOCK_ID }) } }
+const failDevice = { getDeviceId(o) { o.fail() } }
+if (paykey && ppkey) {
 // ---------- 收费系统：算法隔离（与乒乓不通用） ----------
 const code = paykey.shortCodeForDevice(MOCK_ID)
 const key = paykey.keyForShortCode(code)
@@ -292,27 +319,6 @@ inst.view = 'tools'; inst.openTool('plot'); eq('解锁后图象设置可进', in
 inst.openTool('history'); eq('解锁后历史可进', inst.view, 'history')
 
 // ---------- 收费系统：持久化与防篡改 ----------
-function makeInst(deviceImpl, store) {
-  let s = fs.readFileSync(path.join(__dirname, '../src/pages/index/index.ux'), 'utf8')
-  s = s.slice(s.indexOf('<script>') + 8, s.indexOf('</script>'))
-  globalThis.__storage = { get(o) { o.success(store[o.key] || '') }, set(o) { store[o.key] = o.value } }
-  globalThis.__device = deviceImpl
-  s = s.replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
-    .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
-    .replace("import device from '@system.device'", 'const device = globalThis.__device')
-    .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
-    .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
-    .replace('export default', 'module.exports =')
-  const mm = { exports: {} }
-  new Function('module', 'exports', s)(mm, mm.exports)
-  const d = mm.exports
-  const it = {}
-  Object.assign(it, JSON.parse(JSON.stringify(d.data)))
-  for (const k of Object.keys(d)) if (typeof d[k] === 'function') it[k] = d[k].bind(it)
-  it.onInit()
-  return it
-}
-const goodDevice = { getDeviceId(o) { o.success({ deviceId: MOCK_ID }) } }
 eq('重启后凭存储密钥自动验真解锁', makeInst(goodDevice, { calc_key: key }).unlocked, true)
 eq('存储里塞假密钥解不开', makeInst(goodDevice, { calc_key: '1234567890' }).unlocked, false)
 eq('存储里塞乒乓密钥解不开', makeInst(goodDevice, { calc_key: ppKey }).unlocked, false)
@@ -323,12 +329,12 @@ ok('锁定状态右滑逐级返回（免费版无强制墙）', instL.onBackPres
 instL.view = 'unlock'
 ok('解锁页右滑回基础计算（免费版）', instL.onBackPress() === true && instL.view === 'calc')
 eq('有钥重启自动进计算器', makeInst(goodDevice, { calc_key: key }).view, 'calc')
-const failDevice = { getDeviceId(o) { o.fail() } }
 const storeF = {}
 const instF = makeInst(failDevice, storeF)
 ok('取不到硬件号时生成备用设备码', /^[0-9a-f]{32}$/.test(instF.deviceId), instF.deviceId)
 ok('备用码已持久化', storeF['calc_devcode'] === instF.deviceId)
 eq('备用码跨重启稳定', makeInst(failDevice, storeF).deviceId, instF.deviceId)
+} else { console.log('SKIP 收费系统三节（paykey.js 未公开；本地完整运行）') }
 
 // ===== 1.4.1 修复：系数分数输入 =====
 const instFr = makeInst(goodDevice, {})
