@@ -345,6 +345,35 @@
       </div>
     </div>
 
+    <!-- ===== 三角形面积 ===== -->
+    <div class="view" if="{{view === 'tri'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">三角形面积</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <text class="q-formula">输入三条边长</text>
+      <div class="q-fields">
+        <div class="q-field {{tField === 'a' ? 'q-field-on' : ''}}" onclick="setTField('a')">
+          <text class="q-fl">a</text><text class="q-fv" style="font-size: {{tFvPx}}px;">{{ta ? ta : '0'}}</text>
+        </div>
+        <div class="q-field {{tField === 'b' ? 'q-field-on' : ''}}" onclick="setTField('b')">
+          <text class="q-fl">b</text><text class="q-fv" style="font-size: {{tFvPx}}px;">{{tb ? tb : '0'}}</text>
+        </div>
+        <div class="q-field {{tField === 'c' ? 'q-field-on' : ''}}" onclick="setTField('c')">
+          <text class="q-fl">c</text><text class="q-fv" style="font-size: {{tFvPx}}px;">{{tc ? tc : '0'}}</text>
+        </div>
+      </div>
+      <div class="q-res q-res-s">
+        <text class="q-line" for="{{tLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm" for="{{quadKeys}}" onclick="triPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== 输入方程（自由输入） ===== -->
     <div class="view" if="{{view === 'eqin'}}">
       <div class="bar">
@@ -1193,6 +1222,7 @@ export default {
       { id: 'frac', ico: '½', name: '分数计算', desc: '填分子分母做四则，约分带分数' },
       { id: 'sqrt', ico: '√', name: '根号化简', desc: '√12 = 2√3，一眼看懂' },
       { id: 'gcd', ico: '公', name: '公约数 · 公倍数', desc: '最大公约数与最小公倍数' },
+      { id: 'tri', ico: '△', name: '三角形面积', desc: '输入三条边，算面积' },
       { id: 'history', ico: '≡', name: '历史记录', desc: '最近 5 条，带时间，点一条接着算' }
     ],
     solverMenu: [
@@ -1270,6 +1300,11 @@ export default {
     ga: '12', gb: '18',
     gField: 'a',
     gLines: [],
+    // 三角形面积
+    ta: '3', tb: '4', tc: '5',
+    tField: 'a',
+    tLines: [],
+    tFvPx: 20,
     // 函数图象
     plotTitle: '',
     plotPts: [],
@@ -1325,6 +1360,7 @@ export default {
     this.fracSolve()
     this.sqrtSolve()
     this.gcdSolve()
+    this.triSolve()
     this.syncPlotFields()
     this.refreshCalc()
   },
@@ -1518,6 +1554,7 @@ export default {
     else if (id === 'frac') { this.view = 'frac'; this.fracSolve() }
     else if (id === 'sqrt') { this.view = 'sqrt'; this.sqrtSolve() }
     else if (id === 'gcd') { this.view = 'gcd'; this.gcdSolve() }
+    else if (id === 'tri') { this.view = 'tri'; this.triSolve() }
     else if (id === 'history') { this.view = 'history' }
   },
   openSolver(id) {
@@ -2413,6 +2450,43 @@ export default {
     this.gcdSolve()
   },
 
+  // ---------- 三角形面积（1.5.20 新工具） ----------
+  // 计算器口径：输三边直接出面积，不展示公式/推导。结果沿用全应用双显：
+  // 精确形（整数/分数/化简根式）＋小数；精确形不可得时只给小数
+  setTField(f) { this.buzz(); this.tField = f },
+  triSolve() {
+    this.tFvPx = fvPxOf([this.ta, this.tb, this.tc], true)
+    const a = parseCoeff(this.ta), b = parseCoeff(this.tb), c = parseCoeff(this.tc)
+    if (isNaN(a) || isNaN(b) || isNaN(c)) { this.tLines = ['三条边都填好就能算']; return }
+    const r = calc.triArea(a, b, c)
+    if (r.error) { this.tLines = [r.error]; return }
+    if (r.type === 'degenerate') { this.tLines = ['退化成一条直线，面积 = 0']; return }
+    const dec = FD(r.area)
+    if (!r.exact) { this.tLines = ['面积 ≈ ' + dec]; return }
+    const e = r.exact
+    if (e.rad === 1) {
+      if (e.cd === 1) this.tLines = ['面积 = ' + e.cn]
+      else this.tLines = ['面积 = ' + e.cn + '/' + e.cd, '≈ ' + dec]
+      return
+    }
+    const rs = (e.cn === 1 ? '' : e.cn) + '√' + e.rad + (e.cd === 1 ? '' : '/' + e.cd)
+    if (rs.length > 20) { this.tLines = ['面积 ≈ ' + dec]; return }
+    this.tLines = ['面积 = ' + rs, '≈ ' + dec]
+  },
+  triPad(v) {
+    this.buzz()
+    const props = { a: 'ta', b: 'tb', c: 'tc' }
+    const prop = props[this.tField]
+    const r = editNum(this[prop], v, true)
+    if (r === 'NEXT') {
+      const order = ['a', 'b', 'c']
+      this.tField = order[(order.indexOf(this.tField) + 1) % 3]
+      return
+    }
+    this[prop] = r
+    this.triSolve()
+  },
+
   // ---------- 函数图象 ----------
   backFromPlot() { this.buzz(); this.view = this.plotBack },
   openPlot(kind) {
@@ -2652,6 +2726,42 @@ export default {
     }
     if (labDup(lY)) lY = [lY[Math.floor(lY.length / 2)]] // 同 X 轴兜底（1.5.19）
     if (this.plotAxisL >= 0 && this.plotAxisT >= 0) lX.push({ lab: '0', ll: this.plotAxisL + 4, lt: this.plotAxisT + 4, ta: 'left', lw: labW('0', 24) })
+    // 标签碰撞消解（1.5.20，N-03）：修订四把盒宽按字数给足后，相邻标签仍
+    // 可整体交叠——a=1、b=999999999、c=0 的 X 轴 7 个标签（盒宽达 92px、
+    // 相邻仅差 18–45px）实测 6 组交叠，修订四只有给宽、没有碰撞检查。
+    // 生成后（含后加的原点 '0'）按「文本实际占用区间」扫除：占用宽沿修
+    // 订四同一估宽口径（字数×6px、上限为盒宽 lw），按 ta 在盒内定位
+    //（left 左锚、right 右锚、center 居中）；同轴按占用左端排序，贪心保
+    // 留、与已保留者交叠（须留 ≥2px 间隙）的后出现者丢弃，刻度记号不动。
+    // 用占用区间而非盒宽判定，是为了原点 '0' 这类「短文本宽盒」标签：
+    // 其盒与相邻居中标签盒交叠、但文本不交叠（正常基线 §10d 钉注形态），
+    // 按盒判定会误伤基线。Y 轴同理按纵向占用（lt 起、行高 12px＝10px 字
+    // 号单行高）扫除。扫除只删不改：保留标签的 ll/lt/ta/lw 与原数组顺序
+    //（基线钉注的呈现顺序）逐字不变
+    const labOccX = function (t) {
+      const tw = Math.min(t.lw, t.lab.length * 6)
+      if (t.ta === 'left') return [t.ll, t.ll + tw]
+      if (t.ta === 'right') return [t.ll + t.lw - tw, t.ll + t.lw]
+      return [t.ll + (t.lw - tw) / 2, t.ll + (t.lw + tw) / 2]
+    }
+    const sweepLabs = function (labs, occ) {
+      const order = labs.map(function (t, i) { return i }).sort(function (p, q) {
+        const d = occ(labs[p])[0] - occ(labs[q])[0]
+        return d !== 0 ? d : p - q
+      })
+      const kept = {}
+      let lastEnd = -Infinity
+      for (const i of order) {
+        const o = occ(labs[i])
+        if (o[0] < lastEnd + 2) continue
+        kept[i] = true
+        lastEnd = o[1]
+      }
+      return labs.filter(function (t, i) { return kept[i] })
+    }
+    const labOccY = function (t) { return [t.lt, t.lt + 12] }
+    lX = sweepLabs(lX, labOccX)
+    lY = sweepLabs(lY, labOccY)
     this.plotTickX = tX
     this.plotTickY = tY
     this.plotLabX = lX

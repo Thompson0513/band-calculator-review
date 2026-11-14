@@ -242,7 +242,13 @@ function evaluate(src, opts) {
       const arg = parseExprW()
       const close = next()
       if (!close || close.t !== ')') throw new Error('missing )')
-      return { v: applyFn(tk.v, arg.v, deg, arg.rad), rad: false, dirty: false }
+      // dirty 传播口径（1.5.20 定版，N-04）：精确运算透传——abs 只取绝对
+      // 值、不引入舍入，透传 arg.dirty；旧版统一清零使 abs(0.1+0.2)−0.3 的
+      // 残差绕过吸附、与 0.1+0.2−0.3 的结果（0）自相矛盾。超越/近似函数
+      //（sin/cos/tan/log/ln/√/立方根等）输出自带舍入、误差来源不可由
+      // TwoSum 追踪，维持 dirty=false 按新值处理。括号与一元负号本就透传
+      //（见 parseAtom 括号分支与 parseFactor），不在此处
+      return { v: applyFn(tk.v, arg.v, deg, arg.rad), rad: false, dirty: tk.v === 'abs' ? arg.dirty : false }
     }
     throw new Error('unexpected ' + tk.t)
   }
@@ -742,12 +748,165 @@ function simplifySqrt(n) {
   return { coef: coef, rad: rad, dec: Math.sqrt(n) }
 }
 
+// ---------- 判别式/行列式可靠计算（1.5.20，第十四轮复审 N-01/N-02） ----------
+// b²−4ac、a1b2−a2b1 这类「两大乘积相消」在双精度下会把真值丢成 0：
+// 999999998x²+999999999x+250000000 的 Δ 精确为 1、双精度算得 0 → 误判重根；
+// 方程组 {999999999x+999999998y=1; 999999998x+999999997y=2} 的 D 精确为 −1、
+// 双精度算得 0 → 误报无解（复审方 BigInt 核对实证）。口径：
+// 系数全为整数值 → BigInt 精确算、判定不带容差（无 BigInt 运行时退回补偿
+// 算术，与仓内既有 BigInt 用法同款守卫）；含非整数系数 → 双双精度补偿
+// 算术（TwoProduct/TwoSum，乘积与差算到约 2^-106 相对精度）后沿用既有
+// 相对容差判定——小数系数的假重根/倍式方程组基线（0.1/0.7 族）靠的正是
+// 容差，容差数值不动、只是被判定的量从原始双精度换成高精度值。
+const DD_SPLITTER = 134217729 // 2^27 + 1，Dekker 分裂常数
+function ddProd(a, b) { // [hi, lo]：hi = fl(a·b)，hi + lo = a·b（精确）
+  const p = a * b
+  const ta = DD_SPLITTER * a, ah = ta - (ta - a), al = a - ah
+  const tb = DD_SPLITTER * b, bh = tb - (tb - b), bl = b - bh
+  const e = ((ah * bh - p) + ah * bl + al * bh) + al * bl
+  return [p, e]
+}
+function ddSum(a, b) { // [s, e]：s = fl(a+b)，s + e = a + b（精确，Knuth TwoSum）
+  const s = a + b
+  const bb = s - a
+  const e = (a - (s - bb)) + (b - bb)
+  return [s, e]
+}
+// det2ddPair(p, q, r, s, k2) = p·q − k2·(r·s) 的双双精度对 [hi, lo]
+//（已归一化：|lo| ≤ 0.5·ulp(hi)，hi 为正确舍入值；整数输入且乘积不溢出时
+// hi + lo 为精确值，可据对判零/判符号——无 BigInt 运行时整数路径的兜底）
+function det2ddPair(p, q, r, s, k2) {
+  const pr1 = ddProd(p, q), pr2 = ddProd(r, s)
+  const d = ddSum(pr1[0], -k2 * pr2[0])
+  const lo = (pr1[1] - k2 * pr2[1]) + d[1]
+  return ddSum(d[0], lo)
+}
+function det2dd(p, q, r, s, k2) { return det2ddPair(p, q, r, s, k2)[0] }
+// 双双精度对的符号：归一化后 hi 主导，hi 为 0 时看 lo；对全零返回 0
+function ddPairSign(pair) {
+  if (pair[0] !== 0) return pair[0] > 0 ? 1 : -1
+  if (pair[1] !== 0) return pair[1] > 0 ? 1 : -1
+  return 0
+}
+// 整数系数精确判别式 b²−4ac（BigInt）；无 BigInt 运行时返回 null 退回补偿路径
+function bigDisc(a, b, c) {
+  if (typeof BigInt !== 'function') return null
+  try {
+    const A = BigInt(a), B = BigInt(b), C = BigInt(c)
+    return B * B - 4n * A * C
+  } catch (e) { return null }
+}
+// 整数系数精确行列式组 [D, Dx, Dy]（BigInt）；无 BigInt 运行时返回 null
+function bigDets(a1, b1, c1, a2, b2, c2) {
+  if (typeof BigInt !== 'function') return null
+  try {
+    const A1 = BigInt(a1), B1 = BigInt(b1), C1 = BigInt(c1)
+    const A2 = BigInt(a2), B2 = BigInt(b2), C2 = BigInt(c2)
+    return [A1 * B2 - A2 * B1, C1 * B2 - C2 * B1, A1 * C2 - A2 * C1]
+  } catch (e) { return null }
+}
+function isIntVal(v) { return Number.isInteger(v) }
+
+// ---------- 三角形面积（1.5.20 新工具） ----------
+// 数值：三边排序后用 Kahan 稳定海伦式连乘——细长三角形（如 500000, 500000, 1）
+// 不因 s−a 级相消丢精度（与勾股高线法参照相对误差 1e-16 级）。
+// 精确形：边长按 String(v) 最短串还原成十进制整数缩放（与 toFraction 同
+// 口径），三角形判定（构成/退化）在整数上精确做；四个海伦因子
+// F1=a+b+c、F2=b+c−a、F3=a−b+c、F4=a+b−c 各自试除分解（单因子 ≤1e12，
+// 与 simplifySqrt 同上限口径）、指数合并得面积 = (cn/cd)·√rad；不可还原、
+// 超限或无 BigInt 时 exact 为 null、只给小数——不编造精确形。
+function decScaleOf(v) { // 双精度 → { s: 整数（≤15 位）, k: 小数位 } 或 null
+  const mm = /^-?(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(v))
+  if (!mm) return null
+  let digits = (mm[1] + (mm[2] || '')).replace(/^0+/, '')
+  if (digits === '') return { s: 0, k: 0 }
+  let k = (mm[2] || '').length - (mm[3] ? parseInt(mm[3], 10) : 0)
+  if (k < 0) {
+    if (digits.length - k > 15) return null
+    digits = digits + '0'.repeat(-k)
+    k = 0
+  }
+  if (digits.length > 15) return null
+  return { s: Number(digits), k: k }
+}
+function factorExps(n) { // n ≤ 1e12 的素因数指数表（试除，同 simplifySqrt 口径）
+  const map = new Map()
+  let rad = n
+  for (let k = 2; k * k <= rad; k++) {
+    while (rad % k === 0) { map.set(k, (map.get(k) || 0) + 1); rad /= k }
+  }
+  if (rad > 1) map.set(rad, (map.get(rad) || 0) + 1)
+  return map
+}
+function triArea(a, b, c) {
+  if (!isFinite(a) || !isFinite(b) || !isFinite(c) || a <= 0 || b <= 0 || c <= 0) return { error: '请输入有效边长' }
+  const srt = [a, b, c].sort(function (p, q) { return q - p })
+  const x = srt[0], y = srt[1], z = srt[2]
+  // 整数缩放路径（判定＋精确形）；缩放后整数须留出三倍求和余量
+  const decs = [a, b, c].map(decScaleOf)
+  let S = null, K = 0
+  if (decs.every(function (d) { return d !== null }) && typeof BigInt === 'function') {
+    K = Math.max(decs[0].k, decs[1].k, decs[2].k)
+    const cand = decs.map(function (d) { return d.s * Math.pow(10, K - d.k) })
+    if (cand.every(function (v) { return v <= 9007199254740991 / 4 })) S = cand.sort(function (p, q) { return q - p })
+  }
+  if (S !== null) {
+    if (S[1] + S[2] < S[0]) return { error: '不能构成三角形' }
+    if (S[1] + S[2] === S[0]) return { type: 'degenerate', area: 0 }
+  } else {
+    if (y + z < x) return { error: '不能构成三角形' }
+    if (y + z === x) return { type: 'degenerate', area: 0 }
+  }
+  const area = 0.25 * Math.sqrt((x + (y + z)) * (z - (x - y)) * (z + (x - y)) * (x + (y - z)))
+  if (!isFinite(area)) return { error: '数字太大，超出精确计算范围' }
+  let exact = null
+  if (S !== null) {
+    const F = [S[0] + S[1] + S[2], S[1] + S[2] - S[0], S[0] - S[1] + S[2], S[0] + S[1] - S[2]]
+    if (F.every(function (v) { return v <= 1e12 })) {
+      const merged = new Map()
+      for (const f of F) for (const ent of factorExps(f)) merged.set(ent[0], (merged.get(ent[0]) || 0) + ent[1])
+      let coefB = 1n, radB = 1n
+      for (const ent of merged) {
+        if (ent[1] % 2 === 1) radB *= BigInt(ent[0])
+        if (ent[1] >= 2) coefB *= BigInt(ent[0]) ** BigInt(ent[1] >> 1)
+      }
+      let cnB = coefB, cdB = 4n * (10n ** BigInt(2 * K))
+      let g = cnB, h = cdB
+      while (h !== 0n) { const t = g % h; g = h; h = t }
+      cnB /= g; cdB /= g
+      // 转 Number 须逐值往返核对（BigInt(Number(x)) === x）：2^53 之外只有
+      // 部分整数（2 的幂倍数）可精确表示，能往返才收，绝不给失真精确形
+      const toSafeNum = function (v) {
+        if (v > (10n ** 21n)) return null
+        const n = Number(v)
+        try { return BigInt(n) === v ? n : null } catch (e) { return null }
+      }
+      const cnN = toSafeNum(cnB), cdN = toSafeNum(cdB), radN = toSafeNum(radB)
+      if (cnN !== null && cdN !== null && radN !== null) exact = { cn: cnN, cd: cdN, rad: radN }
+    }
+  }
+  return { type: 'ok', area: area, exact: exact }
+}
+
 // ---------- 一元一次方程 ax+b = cx+d ----------
 
 function solveLinear(a, b, c, d) {
-  const A = a - c, B = d - b
-  // 两组大数相减可能溢出成 ±Infinity 或 Inf−Inf 成 NaN：先守卫，别让 NaN 当解返回（1.5.8）
-  if (!isFinite(A) || !isFinite(B)) return { error: '数字太大，超出精确计算范围' }
+  // 输入有限性守卫（1.5.20 补齐，与 solveSystem 同口径）：NaN/Inf 输入先挡
+  // 下报错；旧版靠下方 A/B 检查兜底同类情形，口径不变
+  if (!isFinite(a) || !isFinite(b) || !isFinite(c) || !isFinite(d)) return { error: '数字太大，超出精确计算范围' }
+  let A = a - c, B = d - b
+  if (!isFinite(A) || !isFinite(B)) {
+    // 两组大数相减溢出（1.5.20，N-06）：(1e308, 0, −1e308, 0) 的 A =
+    // 1e308−(−1e308) 溢出成 Infinity、旧版直接报错，但解 x=0 本可表示。
+    // 只在原始相减已溢出时才按 max|系数| 归一化重算（同除正数不改变
+    // x = B/A）；原始相减有限的路径逐字走旧逻辑——1.5.7 钉注的
+    // (1e-320, 0, 0, 1e300)（A、B 均有限、x 本身溢出）仍走下方 x 有限性
+    // 检查报错，不被归一化改判成无解
+    const m = Math.max(Math.abs(a), Math.abs(b), Math.abs(c), Math.abs(d))
+    A = a / m - c / m
+    B = d / m - b / m
+    if (!isFinite(A) || !isFinite(B)) return { error: '数字太大，超出精确计算范围' }
+  }
   if (A === 0) return B === 0 ? { type: 'infinite' } : { type: 'none' }
   const x = B / A
   // A 极小、B 极大时 x 会溢出成 ±Infinity：与 solveQuad 同口径报错，不把无穷大当解（1.5.7）
@@ -764,11 +923,11 @@ function solveQuad(a, b, c) {
     if (!isFinite(lx)) return { error: '数字太大，超出精确计算范围' }
     return { type: 'linear', x: lx }
   }
-  const disc = b * b - 4 * a * c
-  // 判别式溢出（±Infinity）或 Inf−Inf 成 NaN 时根已不可信：走既有报错口径，
-  // 绝不编造根（旧版 eps 同步溢出会误入重根分支，给出 −5e+307 这类假根；1.5.6 实证）
-  if (!isFinite(disc)) return { error: '数字太大，超出精确计算范围' }
-  // 尺度归一化（1.5.7）：系数整体不在 [1e-100, 1e100] 时同除以 m = max(|a|,|b|,|c|)，
+  // 输入有限性守卫（1.5.20 前置，与 solveSystem/solveLinear 统一）：NaN/Inf
+  // 输入直接报错。旧版靠原始判别式的 isFinite 检查兜底同类情形，口径不变；
+  // 但有限输入的原始判别式溢出自 1.5.20 起不再先行报错——见下方归一化前移
+  if (!isFinite(a) || !isFinite(b) || !isFinite(c)) return { error: '数字太大，超出精确计算范围' }
+  // 尺度归一化（1.5.7 引入，1.5.20 前移到判别式计算之前）：系数整体不在 [1e-100, 1e100] 时同除以 m = max(|a|,|b|,|c|)，
   // 方程的根不变，判别式与容差回到 O(1) 尺度上算，根治两类尺度病：
   // ① 旧 eps 带 Math.max(1, …) 绝对下限——方程整体缩小（如 x²−1e-13=0）时
   //    真判别式 4e-13 被 1e-12 阈值吞掉、误报重根 0（ChatGPT 第三份报告实证；
@@ -783,14 +942,58 @@ function solveQuad(a, b, c) {
   const a1 = scaled ? a / m : a
   const b1 = scaled ? b / m : b
   const c1 = scaled ? c / m : c
-  const discN = b1 * b1 - 4 * a1 * c1
-  const discOut = scaled ? ((discN * m) * m || disc || discN) : disc
+  // 判别式可靠计算（1.5.20，N-01/N-05）：
+  // · 归一化前移后，(1e200, −3e200, 2e200) 这类原始判别式先溢出的方程也能
+  //   在归一化尺度上正常判别求根（缩放不改变根与判别式符号）；归一化后仍
+  //   真溢出的由下方各分支的根有限性检查报错，口径与旧版一致。
+  // · 整数系数走 BigInt 精确判别式（在原始系数上算，符号与归一化尺度一
+  //   致）：分类（两根/重根/复数）只依据精确 Δ，不再被相对容差掩盖——
+  //   Δ 精确为 1 的近重根方程旧版误判重根（N-01）。discN 由精确 Δ 换算到
+  //   归一化尺度：未缩放直接 Number(D)；已缩放时 D 与 m² 可达 1e600 级
+  //   BigInt、且系数跨量级时 discN 可小到 1e-308 级（a=1e308、b=c=1 的
+  //   Δ/m² ≈ −4e-308）——按十进制位数把 D/m² 的商先放大到约 19 位有效
+  //   数字（BigInt 整除），再分段乘回 10 的幂，全程既不溢出也不截断。
+  // · 含非整数系数走双双精度补偿值＋既有相对容差（容差理由见下）。
+  const bigD = (isIntVal(a) && isIntVal(b) && isIntVal(c)) ? bigDisc(a, b, c) : null
+  let discN, discOut, exactCls = null
+  if (bigD !== null) {
+    exactCls = bigD > 0n ? 1 : bigD < 0n ? -1 : 0
+    if (!scaled) {
+      discN = Number(bigD)
+      discOut = discN
+    } else {
+      const mB = BigInt(m), m2B = mB * mB
+      const negD = bigD < 0n, absD = negD ? -bigD : bigD
+      const dnD = absD.toString().length, dnM = m2B.toString().length
+      const shiftD = 19 - (dnD - dnM)
+      const qD = shiftD >= 0 ? (absD * (10n ** BigInt(shiftD))) / m2B : absD / (m2B * (10n ** BigInt(-shiftD)))
+      let vD = Number(qD), eD = -shiftD
+      while (eD <= -170) { vD *= 1e-170; eD += 170 }
+      if (eD !== 0) vD *= Math.pow(10, eD)
+      discN = negD ? -vD : vD
+      const restored = (discN * m) * m
+      discOut = (isFinite(restored) && restored !== 0) ? restored : discN
+    }
+  } else {
+    const discPair = det2ddPair(b1, b1, a1, c1, 4)
+    discN = discPair[0]
+    // 整数系数但无 BigInt（如运行时缺失）：未缩放时整数乘积的双双对精确，
+    // 据对判符号/判零作兜底分类，不被浮点容差掩盖（N-01 同口径）
+    if (!scaled && isIntVal(a) && isIntVal(b) && isIntVal(c)) exactCls = ddPairSign(discPair)
+    const discRaw = b * b - 4 * a * c
+    if (!scaled) discOut = discRaw
+    else {
+      const rst = (discN * m) * m
+      discOut = (isFinite(rst) && rst !== 0) ? rst : ((isFinite(discRaw) && discRaw !== 0) ? discRaw : discN)
+    }
+  }
   // 浮点容差：小数系数时 disc 可能是 ±1e-17 级的假信号，按相对量级判零；
   // 纯相对尺度、不设绝对下限（理由同 ①）。系数 1e-14（1.5.8 由 1e-12 收紧）：
   // 1e-12 时 x²+2x+(1−1e-13) 这类真两根（判别式 4e-13）会被误判重根——
   // 浮点噪声实际只有 1e-16 级，1e-14 仍留约 100 倍余量（ChatGPT 第四份报告实证）
   const eps = 1e-14 * Math.max(Math.abs(b1 * b1), Math.abs(4 * a1 * c1))
-  if (discN > eps) {
+  const cls = exactCls !== null ? exactCls : (discN > eps ? 1 : discN >= -eps ? 0 : -1)
+  if (cls === 1) {
     const sq = Math.sqrt(discN)
     // 稳定求根：先算「-b 与 √Δ 同向相加」的那根（不发生灾难性消去），
     // 另一根用韦达定理 x1·x2 = c/a 推出；x1/x2 顺序与旧公式保持一致
@@ -802,7 +1005,7 @@ function solveQuad(a, b, c) {
       ? { type: 'two', disc: discOut, x1: rB, x2: rA }
       : { type: 'two', disc: discOut, x1: rA, x2: rB }
   }
-  if (discN >= -eps) {
+  if (cls === 0) {
     const x = -b1 / (2 * a1)
     if (!isFinite(x)) return { error: '数字太大，超出精确计算范围' }
     return { type: 'one', disc: 0, x: x }
@@ -829,9 +1032,46 @@ function solveSystem(a1, b1, c1, a2, b2, c2) {
   if (m1 > 1e100 || (m1 > 0 && m1 < 1e-100)) { a1 /= m1; b1 /= m1; c1 /= m1 }
   const m2 = Math.max(Math.abs(a2), Math.abs(b2), Math.abs(c2))
   if (m2 > 1e100 || (m2 > 0 && m2 < 1e-100)) { a2 /= m2; b2 /= m2; c2 /= m2 }
-  const D = a1 * b2 - a2 * b1
-  const Dx = c1 * b2 - c2 * b1
-  const Dy = a1 * c2 - a2 * c1
+  // 行列式可靠计算（1.5.20，N-02）：与 solveQuad 同套路——归一化后的系数
+  // 全为整数值时走 BigInt 精确行列式、判定不带容差（D 精确 −1 的方程组旧
+  // 版被双精度相消误报无解）；含非整数系数时走双双精度补偿值＋下方既有
+  // 相对容差判定（容差理由与数值均不变，只是被判定的量换成高精度值）
+  const bigDs = (isIntVal(a1) && isIntVal(b1) && isIntVal(c1) && isIntVal(a2) && isIntVal(b2) && isIntVal(c2))
+    ? bigDets(a1, b1, c1, a2, b2, c2) : null
+  if (bigDs !== null) {
+    const DB = bigDs[0], DxB = bigDs[1], DyB = bigDs[2]
+    if (DB !== 0n) {
+      const x = Number(DxB) / Number(DB), y = Number(DyB) / Number(DB)
+      if (!isFinite(x) || !isFinite(y)) return { error: '数字太大，超出精确计算范围' }
+      return { type: 'one', x: x, y: y, xFrac: toFraction(x), yFrac: toFraction(y) }
+    }
+    if (DxB === 0n && DyB === 0n) {
+      // 还要排除「一行全 0 但 c≠0」这类实际无解
+      if ((a1 === 0 && b1 === 0 && c1 !== 0) || (a2 === 0 && b2 === 0 && c2 !== 0)) return { type: 'none' }
+      return { type: 'infinite' }
+    }
+    return { type: 'none' }
+  }
+  const Dp = det2ddPair(a1, b2, a2, b1, 1)
+  const Dxp = det2ddPair(c1, b2, c2, b1, 1)
+  const Dyp = det2ddPair(a1, c2, a2, c1, 1)
+  const D = Dp[0], Dx = Dxp[0], Dy = Dyp[0]
+  // 整数系数但无 BigInt：未被行归一化改写时整数乘积的双双对精确，据对
+  // 判零作兜底（与 BigInt 分支同判定结构，N-02 同口径）
+  const sysIntPair = (m1 <= 1e100 && !(m1 > 0 && m1 < 1e-100) && m2 <= 1e100 && !(m2 > 0 && m2 < 1e-100))
+    && isIntVal(a1) && isIntVal(b1) && isIntVal(c1) && isIntVal(a2) && isIntVal(b2) && isIntVal(c2)
+  if (sysIntPair) {
+    if (ddPairSign(Dp) !== 0) {
+      const x = Dx / D, y = Dy / D
+      if (!isFinite(x) || !isFinite(y)) return { error: '数字太大，超出精确计算范围' }
+      return { type: 'one', x: x, y: y, xFrac: toFraction(x), yFrac: toFraction(y) }
+    }
+    if (ddPairSign(Dxp) === 0 && ddPairSign(Dyp) === 0) {
+      if ((a1 === 0 && b1 === 0 && c1 !== 0) || (a2 === 0 && b2 === 0 && c2 !== 0)) return { type: 'none' }
+      return { type: 'infinite' }
+    }
+    return { type: 'none' }
+  }
   // 浮点容差（同 solveQuad 套路）：小数系数时 D 可能是 1e-17 级的假信号
   //（如 0.1x+0.7y=1 与它的 3 倍式），严格判零会误报唯一解，必须按相对量级判。
   // 阈值必须是纯相对尺度、不能给下限：若按 max(1, …) 兜底，系数整体在 1e-7 级时
@@ -946,6 +1186,7 @@ export default {
   solveLinear: solveLinear,
   solveQuad: solveQuad,
   solveSystem: solveSystem,
+  triArea: triArea,
   UNIT_CATS: UNIT_CATS,
   convertUnit: convertUnit,
   baseConvert: baseConvert
