@@ -1109,14 +1109,21 @@ function fmtTick(v, step) {
   //（E 为量级指数），无步长信息时维持 2 位；上限 15 位（双精度可靠十进制
   // 位数内；1e9 整数边界处 E 跳变、需 14 位才分得开，13 位不够）；尾零去掉。
   // 课本式外壳（1.5.17）：常规标签如 −2.5×10²⁰（9 字，比 e 记法长 1 字）；
-  // 标签硬上限仍是 22 字（符号 1＋尾数 16＋「×10」2＋上标指数 ≤3），静态
-  // 宽度复核见 BUGLOG 1.5.17
+  // 标签长度口径 1.5.18 修订（B-03）：「×10」是 ×、1、0 共 3 字而非 2 字，
+  // 15 位尾数＋3 位上标指数的极端标签实际达 23 字，靠函数尾部的降位循环
+  // 兜住 22 字硬上限（见下）
   let digs = 2
   if (typeof step === 'number' && step > 0 && isFinite(step) && v !== 0 && isFinite(v)) {
     const E = Math.floor(Math.log10(Math.abs(v)))
     digs = Math.min(15, Math.max(2, Math.ceil(E + 1 - Math.log10(step))))
   }
-  return dispNum(calc.sciStr(trimSci(v.toExponential(digs - 1))))
+  const render = function () { return dispNum(calc.sciStr(trimSci(v.toExponential(digs - 1)))) }
+  let out = render()
+  // 长度硬上限 22 字（1.5.18，B-03）：fmtTick(−Number.MAX_VALUE, 1e292)
+  // 旧版给 23 字（第十二轮复审实证）；超限时逐级降有效位数重渲染，
+  // digs=2 时最长 11 字（符号 1＋尾数 3＋「×10」3＋上标 ≤4），必然达标
+  while (out.length > 22 && digs > 2) { digs--; out = render() }
+  return out
 }
 function TERM(coef, suffix, first) {
   if (coef === 0) return ''
@@ -2551,27 +2558,46 @@ export default {
     this.plotAxisL = (0 >= x0 && 0 <= x1) ? px(0) : -10
     this.plotAxisT = (0 >= ymin && 0 <= ymax) ? py(0) : -10
     // 坐标轴刻度+数字：单位长度随量程自动分档；轴不在画面内时退到画布边缘标尺
-    const stepX = niceStep(x1 - x0, 8)
-    const stepY = niceStep(ymax - ymin, 8)
     const baseT = this.plotAxisT >= 0 ? this.plotAxisT : H - 10
     const baseL = this.plotAxisL >= 0 ? this.plotAxisL : 10
-    const tX = [], tY = [], lX = [], lY = []
-    for (let k = Math.ceil(x0 / stepX); k <= Math.floor(x1 / stepX); k++) {
-      const v = Math.round(k * stepX * 1e10) / 1e10
-      if (v === 0) continue
-      const cx = px(v)
-      tX.push({ ml: cx, mt: baseT - 3 })
-      if (cx >= 14 && cx <= 298) lX.push({ lab: fmtTick(v, stepX), ll: cx - 12, lt: baseT <= H - 24 ? baseT + 4 : baseT - 15, ta: 'center' })
+    // 刻度标签去重（1.5.18，B-02）：极端窗口下步长细于该量级双精度可分辨
+    // 粒度时，相邻刻度标签会塌成同一文本（a=0.001、b=999999999 的抛物线
+    // Y 轴 7 个标签只有 2 种，第十二轮复审实证）。生成后若相邻显示标签
+    // 重复则步长翻倍重算，直到两两可区分；标签只剩 2 个时停（下限防刻
+    // 度消失）。正常参数无重复、首轮即定，刻度数与旧版一致
+    const labDup = function (labs) {
+      for (let i2 = 1; i2 < labs.length; i2++) if (labs[i2].lab === labs[i2 - 1].lab) return true
+      return false
     }
-    for (let k = Math.ceil(ymin / stepY); k <= Math.floor(ymax / stepY); k++) {
-      const v = Math.round(k * stepY * 1e10) / 1e10
-      if (v === 0) continue
-      const cy = py(v)
-      tY.push({ ml: baseL - 3, mt: cy })
-      if (cy >= 6 && cy <= 282) {
-        if (baseL >= 36) lY.push({ lab: fmtTick(v, stepY), ll: baseL - 31, lt: cy - 6, ta: 'right' })
-        else lY.push({ lab: fmtTick(v, stepY), ll: baseL + 5, lt: cy - 6, ta: 'left' })
+    let stepX = niceStep(x1 - x0, 8)
+    let stepY = niceStep(ymax - ymin, 8)
+    let tX = [], tY = [], lX = [], lY = []
+    for (let iter = 0; iter < 60; iter++) {
+      tX = []; lX = []
+      for (let k = Math.ceil(x0 / stepX); k <= Math.floor(x1 / stepX); k++) {
+        const v = Math.round(k * stepX * 1e10) / 1e10
+        if (v === 0) continue
+        const cx = px(v)
+        tX.push({ ml: cx, mt: baseT - 3 })
+        if (cx >= 14 && cx <= 298) lX.push({ lab: fmtTick(v, stepX), ll: cx - 12, lt: baseT <= H - 24 ? baseT + 4 : baseT - 15, ta: 'center' })
       }
+      if (!labDup(lX) || lX.length <= 2) break
+      stepX *= 2
+    }
+    for (let iter = 0; iter < 60; iter++) {
+      tY = []; lY = []
+      for (let k = Math.ceil(ymin / stepY); k <= Math.floor(ymax / stepY); k++) {
+        const v = Math.round(k * stepY * 1e10) / 1e10
+        if (v === 0) continue
+        const cy = py(v)
+        tY.push({ ml: baseL - 3, mt: cy })
+        if (cy >= 6 && cy <= 282) {
+          if (baseL >= 36) lY.push({ lab: fmtTick(v, stepY), ll: baseL - 31, lt: cy - 6, ta: 'right' })
+          else lY.push({ lab: fmtTick(v, stepY), ll: baseL + 5, lt: cy - 6, ta: 'left' })
+        }
+      }
+      if (!labDup(lY) || lY.length <= 2) break
+      stepY *= 2
     }
     if (this.plotAxisL >= 0 && this.plotAxisT >= 0) lX.push({ lab: '0', ll: this.plotAxisL + 4, lt: this.plotAxisT + 4, ta: 'left' })
     this.plotTickX = tX

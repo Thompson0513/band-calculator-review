@@ -267,7 +267,7 @@ ok('6ad 纯带回数值不误判真实计算（isRealCalc）', isRealCalc('1×10
 // ---------- 7) 宽度静态审计 ----------
 eq('7a 常规刻度标签 9 字（−2.5×10²⁰）', fmtTick(-249999999500000000000).length, 9)
 eq('7b 最坏刻度标签 21 字', fmtTick(9.99999999999999e20, 1e6).length, 21)
-ok('7c 极端刻度标签 ≤22 字硬上限', fmtTick(-9.99999999999999e308, 1e292).length <= 22)
+ok('7c 极端刻度标签 ≤22 字硬上限', fmtTick(-Number.MAX_VALUE, 1e292).length <= 22) // 1.5.18 修订：原用例 -9.99999999999999e308 在 JS 中为 -Infinity、走「溢出」短串空转（第十二轮复审实证），换真实有限最大值
 ok('7d 结果行 cap 恒守住（cap≥12）', [1e-16, -1234567890123456, 1.5e21, 9.99e18].every((v) => fitResStr(v, 12).length <= 12 && fitResStr(v, 18).length <= 18))
 {
   const i = makeInst()

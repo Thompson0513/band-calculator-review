@@ -410,7 +410,13 @@ function evaluate(src, opts) {
         const bigI = Math.max(Number.isInteger(lv) ? Math.abs(lv) : 0, Number.isInteger(rv) ? Math.abs(rv) : 0)
         if (isFinite(s) && bigI > 9007199254740991 && Math.abs(s) >= bigI * 1e-6 &&
           twoSumErr(lv, op === '+' ? rv : -rv) !== 0) intTaint++
-        lv = s
+        // 抵消残差吸附（1.5.18，B-01）：0.1+0.2−0.3 = 5.55e-17 级残差的源头
+        // 是加减步操作数自身携带的舍入（相对操作数尺度 ~2^-53/步），显示层
+        // 无状态判别分不开它与同量级真商（第十二轮复审实证），必须在求值层
+        // 按相对尺度吸附：结果非零、却只有操作数尺度 2^-50（≈8 ulp）量级
+        // 时判为抵消残差、归零。乘除定标不吸附；同尺度合法小量（1e-17+
+        // 1e-17，结果与操作数同量级）与 0+x（结果即操作数本身）不受影响
+        lv = (s !== 0 && Math.abs(s) <= Math.max(Math.abs(lv), Math.abs(rv)) * Math.pow(2, -50)) ? 0 : s
       }
       lrad = lrad || right.rad
     }
@@ -511,9 +517,34 @@ function dispMinus(s) {
   return out
 }
 
+// 极小真商判别（1.5.18，B-01）：v 是否为「干净十进制数 ÷ 小整数」型的
+// 真值——存在小整数 k（2..99）使 v×k 恰为有效数字 ≤3 位的干净十进制数
+//（12 位回读全等）、且除回来分毫不差。实测：真商族（1e-16÷3、÷7、÷1.5、
+// ÷2.2 等 17 例）全过；0.1+0.2−0.3 残差（2^-54）、sin/cos 的 π 尾巴、
+// 无理数缩放、4 万个随机双精度值均零假阳性。cleanNum 的归零判别本身不
+// 动（fracIsExact、方程 DP 等调用点口径不变），本判别只供 formatDisplay
+// 在显示层救援——相消残差另有求值层加减吸附先行拦截（见 parseExprW）
+function isTinyQuotient(v) {
+  for (let k = 2; k <= 99; k++) {
+    const w = v * k
+    if (w === 0 || !isFinite(w)) continue
+    if (parseFloat(w.toPrecision(12)) !== w) continue
+    if (w / k !== v) continue
+    const digs = Math.abs(w).toPrecision(12).replace(/e.*$/, '').replace('.', '').replace(/^0+/, '').replace(/0+$/, '')
+    if (digs.length <= 3) return true
+  }
+  return false
+}
+
 function formatDisplay(v) {
   const s = formatPlain(v)
   if (s === '错误' || s === '溢出') return s
+  // 极小真商救援（1.5.18，B-01）：cleanNum 的极小值判别按 12 位表示性
+  // 归零，会把 1e-16÷3 的真商 3.333…e-17 与相消尾巴一并吞成 0（第十二
+  // 轮复审实证）；过 isTinyQuotient 判别的（乘除定标产生的真小量）按
+  // 12 位有效数字课本式显示。尾巴与无理数缩放过不了判别、仍显示 0；
+  // formatPlain 不走救援（接力/内部表示口径不变）
+  if (s === '0' && v !== 0 && isFinite(v) && isTinyQuotient(v)) return dispMinus(sciStr(String(parseFloat(v.toPrecision(12)))))
   // 科学计数改课本式（1.5.17）：sciStr 换记法外壳，dispMinus 只收尾数负号
   if (s.indexOf('e') >= 0 || s.indexOf('E') >= 0) return dispMinus(sciStr(s))
   const neg = s[0] === '-'

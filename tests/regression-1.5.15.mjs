@@ -109,6 +109,8 @@ eq('T10 微小刻度', fmtTick(0.000012345), '1.2×10⁻⁵') // 1.5.17 修订�
   // 窗口的标签位数按可分辨性放宽（硬上限 22 字），原「≤8 字」断言被「≤22 字
   // ＋X 轴互不相同」取代；该图 Y 轴整带宽仅为量级的 1e-15，15 位有效数字内
   // 个别标签仍会重复，属双精度边界、已记 BUGLOG
+  // 1.5.18 注：Y 轴重复已由 buildPlot 生成后去重升步长修复（B-02），本断言
+  // 不变继续守 ≤22 字与 X 轴互不相同；Y 轴互不相同由 regression-1.5.18 钉住
   ok('T11 H 例刻度标签 ≤22 字且 X 轴互不相同（' + labs.join(',') + '）', labs.every((s) => s.length <= 22) && new Set(i.plotLabX.map((t) => t.lab)).size === i.plotLabX.length)
   ok('T12 H 例仍出图且纵向 ≥10 种', i.view === 'plot' && new Set(i.plotPts.map((p) => p.t)).size >= 10)
 }
