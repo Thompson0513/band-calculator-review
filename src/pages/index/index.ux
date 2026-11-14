@@ -724,7 +724,7 @@ function quadRadStrs(a, b, c, x1, x2) {
   // 逐一数值配对自检（对不上整组作废），不靠符号约定硬猜
   const sqm = Math.sqrt(sq.m)
   const vPlus = (P + Q * sqm) / R, vMinus = (P - Q * sqm) / R
-  const tol = function (u, v) { return Math.abs(u - v) <= 1e-9 * Math.max(1, Math.abs(v)) }
+  const tol = function (u, v) { return Math.abs(u - v) <= 1e-9 * Math.abs(v) + 1e-12 }
   const sPlus = radTerm(P, Q, sq.m, R, 1), sMinus = radTerm(P, Q, sq.m, R, -1)
   if (tol(vPlus, x1) && tol(vMinus, x2)) return { x1: sPlus, x2: sMinus }
   if (tol(vMinus, x1) && tol(vPlus, x2)) return { x1: sMinus, x2: sPlus }
@@ -752,7 +752,7 @@ function quadImRad(a, b, c, imVal) {
   if (!Number.isSafeInteger(Q) || !Number.isSafeInteger(R)) return null
   const g = gcd2(Q, R) || 1
   Q /= g; R /= g
-  if (Math.abs(Q * Math.sqrt(sq.m) / R - imVal) > 1e-9 * Math.max(1, Math.abs(imVal))) return null
+  if (Math.abs(Q * Math.sqrt(sq.m) / R - imVal) > 1e-9 * Math.abs(imVal) + 1e-12) return null
   return radTerm(0, Q, sq.m, R, 1)
 }
 // 复数根根式行：实部精确形（分数/整数）+ 虚部根式形同行（两部皆精确，连接用「=」），
@@ -1782,6 +1782,7 @@ export default {
     const a2 = parseCoeff0(this.s2a), b2 = parseCoeff0(this.s2b), c2 = parseCoeff0(this.s2c)
     if ([a1, b1, c1, a2, b2, c2].some(isNaN)) { this.sLines = ['把六个系数都填完整就能解']; return }
     const r = calc.solveSystem(a1, b1, c1, a2, b2, c2)
+    if (r.error) { this.sLines = [r.error]; return }
     const F = function (x) { return calc.formatDisplay(x) }
     if (r.type === 'one') {
       this.sLines = [ansStr('x', r.x, 27), ansStr('y', r.y, 27)]
@@ -1880,7 +1881,8 @@ export default {
         const c1 = coef(raw1), c2 = coef(raw2)
         if (!c1 || !c2) { this.eqLines = ['方程组只支持二元一次', '带平方、xy、根号的解不了']; return }
         const r = calc.solveSystem(c1.A, c1.B, -c1.C, c2.A, c2.B, -c2.C)
-        if (r.type === 'one') {
+        if (r.error) { this.eqLines = [r.error] }
+        else if (r.type === 'one') {
           this.eqLines = [ansStr('x', r.x, 27), ansStr('y', r.y, 27)]
         } else if (r.type === 'none') this.eqLines = ['方程组无解（两式矛盾）']
         else this.eqLines = ['无数个解（两式等价）']

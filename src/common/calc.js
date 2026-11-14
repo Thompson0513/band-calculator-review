@@ -282,12 +282,24 @@ function fracCalc(n1, d1, op, n2, d2) {
   if (![n1, d1, n2, d2].every(Number.isInteger)) return { error: '请输入整数' }
   if (d1 === 0 || d2 === 0) return { error: '分母不能为 0' }
   let n, d
-  if (op === '+') { n = n1 * d2 + n2 * d1; d = d1 * d2 }
-  else if (op === '-') { n = n1 * d2 - n2 * d1; d = d1 * d2 }
-  else if (op === '*') { n = n1 * n2; d = d1 * d2 }
-  else if (op === '/') {
+  // 先约分再乘（1.5.8）：乘除先交叉约分、加减先用分母 gcd 缩小中间乘积，
+  // 避免结果本身不大、中间乘积却先超安全整数被误报「数字太大」
+  //（例：1000000000/1000000001 × 1000000001/1000000000 = 1，旧版中间乘积约 1e18 直接报错）。
+  // 约分用的 gcd 必整除对应两数，以下除法都是精确整除；最终仍有安全整数兜底检查
+  if (op === '+' || op === '-') {
+    const g = gcd(d1, d2) || 1
+    const l1 = d1 / g, l2 = d2 / g
+    n = op === '+' ? n1 * l2 + n2 * l1 : n1 * l2 - n2 * l1
+    d = l1 * d2
+  } else if (op === '*') {
+    const g1 = gcd(n1, d2) || 1
+    const g2 = gcd(n2, d1) || 1
+    n = (n1 / g1) * (n2 / g2); d = (d1 / g2) * (d2 / g1)
+  } else if (op === '/') {
     if (n2 === 0) return { error: '不能除以 0 分数' }
-    n = n1 * d2; d = d1 * n2
+    const g1 = gcd(n1, n2) || 1
+    const g2 = gcd(d2, d1) || 1
+    n = (n1 / g1) * (d2 / g2); d = (d1 / g2) * (n2 / g1)
   } else return { error: '未知运算' }
   // 分子分母的中间乘积超出 JS 安全整数后，约分出的「精确分数」会是错的：明确报错
   if (!Number.isSafeInteger(n) || !Number.isSafeInteger(d)) return { error: '数字太大，超出精确计算范围' }
@@ -331,6 +343,8 @@ function simplifySqrt(n) {
 
 function solveLinear(a, b, c, d) {
   const A = a - c, B = d - b
+  // 两组大数相减可能溢出成 ±Infinity 或 Inf−Inf 成 NaN：先守卫，别让 NaN 当解返回（1.5.8）
+  if (!isFinite(A) || !isFinite(B)) return { error: '数字太大，超出精确计算范围' }
   if (A === 0) return B === 0 ? { type: 'infinite' } : { type: 'none' }
   const x = B / A
   // A 极小、B 极大时 x 会溢出成 ±Infinity：与 solveQuad 同口径报错，不把无穷大当解（1.5.7）
@@ -369,8 +383,10 @@ function solveQuad(a, b, c) {
   const discN = b1 * b1 - 4 * a1 * c1
   const discOut = scaled ? ((discN * m) * m || disc || discN) : disc
   // 浮点容差：小数系数时 disc 可能是 ±1e-17 级的假信号，按相对量级判零；
-  // 纯相对尺度、不设绝对下限（理由同 ①）
-  const eps = 1e-12 * Math.max(Math.abs(b1 * b1), Math.abs(4 * a1 * c1))
+  // 纯相对尺度、不设绝对下限（理由同 ①）。系数 1e-14（1.5.8 由 1e-12 收紧）：
+  // 1e-12 时 x²+2x+(1−1e-13) 这类真两根（判别式 4e-13）会被误判重根——
+  // 浮点噪声实际只有 1e-16 级，1e-14 仍留约 100 倍余量（ChatGPT 第四份报告实证）
+  const eps = 1e-14 * Math.max(Math.abs(b1 * b1), Math.abs(4 * a1 * c1))
   if (discN > eps) {
     const sq = Math.sqrt(discN)
     // 稳定求根：先算「-b 与 √Δ 同向相加」的那根（不发生灾难性消去），
@@ -397,6 +413,9 @@ function solveQuad(a, b, c) {
 // ---------- 二元一次方程组 {a1·x+b1·y=c1, a2·x+b2·y=c2} ----------
 
 function solveSystem(a1, b1, c1, a2, b2, c2) {
+  // 有限性守卫（1.5.8）：输入含 NaN/Infinity 时旧版一律落到「无解」分支（分类错误）；
+  // 与 solveQuad/solveLinear 统一口径，先挡下来报错
+  if (![a1, b1, c1, a2, b2, c2].every(function (v) { return isFinite(v) })) return { error: '数字太大，超出精确计算范围' }
   // 行尺度归一化（1.5.7）：每行尺度不在 [1e-100, 1e100] 时同除以该行
   // max(|a|,|b|,|c|)，解不变；防系数整体极小/极大时 D、Dx、Dy 下溢成 0 或
   // 溢出成 Inf/NaN 把判定带偏（1e-200 缩放的对角方程组曾误报无穷多解——
@@ -415,11 +434,15 @@ function solveSystem(a1, b1, c1, a2, b2, c2) {
   // 阈值必须是纯相对尺度、不能给下限：若按 max(1, …) 兜底，系数整体在 1e-7 级时
   // 真行列式只有 1e-14 级，会被 1e-12 的绝对阈值误判为零，把唯一解误报成
   // 无穷多解（1.5.6 实证修复：{0.0000001x=0.0000001; 0.0000001y=0.0000001}）
-  const eD = 1e-12 * Math.max(Math.abs(a1 * b2), Math.abs(a2 * b1))
-  const eX = 1e-12 * Math.max(Math.abs(c1 * b2), Math.abs(c2 * b1))
-  const eY = 1e-12 * Math.max(Math.abs(a1 * c2), Math.abs(a2 * c1))
+  // 容差系数 1e-14（1.5.8 由 1e-12 收紧，理由同 solveQuad：1e-12 时
+  // {x+y=2; x+(1+1e-13)y=2+1e-13} 这类真唯一解（行列式 1e-13 级）会被误判无穷多解；
+  // 浮点噪声只有 1e-16 级，1e-14 仍留约 100 倍余量）
+  const eD = 1e-14 * Math.max(Math.abs(a1 * b2), Math.abs(a2 * b1))
+  const eX = 1e-14 * Math.max(Math.abs(c1 * b2), Math.abs(c2 * b1))
+  const eY = 1e-14 * Math.max(Math.abs(a1 * c2), Math.abs(a2 * c1))
   if (Math.abs(D) > eD) {
     const x = Dx / D, y = Dy / D
+    if (!isFinite(x) || !isFinite(y)) return { error: '数字太大，超出精确计算范围' }
     return { type: 'one', x: x, y: y, xFrac: toFraction(x), yFrac: toFraction(y) }
   }
   if (Math.abs(Dx) <= eX && Math.abs(Dy) <= eY) {
