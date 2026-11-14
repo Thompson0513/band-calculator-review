@@ -120,28 +120,28 @@ eq('B 全零行 0=5 无解', calc.solveSystem(0, 0, 5, 1, 1, 1).type, 'none')
 eq('B 两行全零一真一假无解', calc.solveSystem(0, 0, 0, 0, 0, 5).type, 'none')
 
 // ---------- C. 极小数归零（修复正例 + 尾巴防护守卫） ----------
-eq('C 主计算 1/10^16 显示科学计数', calc.formatDisplay(calc.evaluate('1/10^16')), '1e-16')
-eq('C 主计算 1÷10^16 显示科学计数', calc.formatDisplay(calc.evaluate('1÷10^16')), '1e-16')
-eq('C 1e-15 不变', calc.formatDisplay(1e-15), '1e-15')
-eq('C 5e-16 是真值', calc.formatDisplay(5e-16), '5e-16')
-eq('C −2.5e-16 是真值', calc.formatDisplay(-2.5e-16), '−2.5e-16')
+eq('C 主计算 1/10^16 显示科学计数', calc.formatDisplay(calc.evaluate('1/10^16')), '1×10⁻¹⁶') // 1.5.17 修订：课本式
+eq('C 主计算 1÷10^16 显示科学计数', calc.formatDisplay(calc.evaluate('1÷10^16')), '1×10⁻¹⁶') // 1.5.17 修订：课本式
+eq('C 1e-15 不变', calc.formatDisplay(1e-15), '1×10⁻¹⁵') // 1.5.17 修订：课本式（值不变、只换记法）
+eq('C 5e-16 是真值', calc.formatDisplay(5e-16), '5×10⁻¹⁶') // 1.5.17 修订：课本式
+eq('C −2.5e-16 是真值', calc.formatDisplay(-2.5e-16), '−2.5×10⁻¹⁶') // 1.5.17 修订：课本式
 eq('C cleanNum 放行 1e-16', calc.cleanNum(1e-16), 1e-16)
 {
 const r = calc.solveQuad(1, 1e16, 1)
-eq('C 二次方程小根不再吞成 0', calc.formatDisplay(r.x1), '−1e-16')
-eq('C 二次方程小根 ansStr', F154.ansStr('x1', r.x1, 28), 'x1 = −1e-16')
+eq('C 二次方程小根不再吞成 0', calc.formatDisplay(r.x1), '−1×10⁻¹⁶') // 1.5.17 修订：课本式
+eq('C 二次方程小根 ansStr', F154.ansStr('x1', r.x1, 28), 'x1 = −1×10⁻¹⁶') // 1.5.17 修订：课本式
 }
 {
 const r = calc.solveSystem(1e16, 0, 1, 0, 1, 1)
-eq('C 方程组小解不再吞成 0', calc.formatDisplay(r.x), '1e-16')
+eq('C 方程组小解不再吞成 0', calc.formatDisplay(r.x), '1×10⁻¹⁶') // 1.5.17 修订：课本式
 }
 eq('C 守卫 sin(180°) 尾巴仍归零', calc.formatDisplay(calc.evaluate('sin(180)')), '0')
 eq('C 守卫 cos(90°) 尾巴仍归零', calc.formatDisplay(calc.evaluate('cos(90)')), '0')
 eq('C 守卫 0.1+0.2−0.3 残差仍归零', calc.formatDisplay(calc.evaluate('0.1+0.2−0.3')), '0')
 eq('C 守卫 cleanNum 吞 sin 尾巴原值', calc.cleanNum(1.2246467991473532e-16), 0)
 eq('C 口径记录 12 位表示不干净的极小真值仍归零', calc.formatDisplay(3.3333333333333335e-16), '0')
-eq('C 1e-14 乘积不变', calc.formatDisplay(calc.evaluate('0.0000001×0.0000001')), '1e-14')
-eq('C 1e-13 不变', calc.formatDisplay(1e-13), '1e-13')
+eq('C 1e-14 乘积不变', calc.formatDisplay(calc.evaluate('0.0000001×0.0000001')), '1×10⁻¹⁴') // 1.5.17 修订：课本式
+eq('C 1e-13 不变', calc.formatDisplay(1e-13), '1×10⁻¹³') // 1.5.17 修订：课本式
 
 // ---------- D. 二次方程溢出（修复正例 + 正常大数守卫） ----------
 const ERR = '数字太大，超出精确计算范围'

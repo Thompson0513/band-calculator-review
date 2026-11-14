@@ -123,7 +123,7 @@ eq('D fracIsExact(1/6)', calc.fracIsExact(1 / 6, calc.toFraction(1 / 6)), true)
 eq('D fracIsExact(0.3333333334→1/3)', calc.fracIsExact(0.3333333334, calc.toFraction(0.3333333334)), false)
 
 // ---------- E. cleanNum 极小值判据 ----------
-eq('E 1÷10^16×1.1 不再清零', calc.formatDisplay(E('1/10^16*1.1')), '1.1e-16')
+eq('E 1÷10^16×1.1 不再清零', calc.formatDisplay(E('1/10^16*1.1')), '1.1×10⁻¹⁶') // 1.5.17 修订：课本式
 eq('E sin(π) 尾巴仍归零', calc.formatDisplay(Math.sin(Math.PI)), '0')
 eq('E 0.1+0.2-0.3 尾巴仍归零', calc.cleanNum(0.1 + 0.2 - 0.3), 0)
 eq('E 边界维持：(1/3)×1e-15 仍归零（与尾巴同带）', calc.cleanNum((1 / 3) * 1e-15), 0)

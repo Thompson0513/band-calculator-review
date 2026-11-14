@@ -56,9 +56,9 @@ approx('a=0 退化根', calc.solveQuad(0, 2, -4).x, 2)
 { const r = calc.fracCalc(123456, 789, '*', 987, 654); ok('分数安全区乘法不报错', !r.error, JSON.stringify(r)); approx('分数安全区乘法值', r.dec, (123456 / 789) * (987 / 654), 1e-12) }
 
 // ---------- 4) cleanNum 显示阈值 ----------
-eq('极小值 1e-13 显示', calc.formatDisplay(1e-13), '1e-13')
+eq('极小值 1e-13 显示', calc.formatDisplay(1e-13), '1×10⁻¹³') // 1.5.17 修订：课本式
 eq('极小值 1e-13 纯文本', calc.formatPlain(1e-13), '1e-13')
-eq('乘积 1e-14 显示', calc.formatDisplay(calc.evaluate('0.0000001×0.0000001')), '1e-14')
+eq('乘积 1e-14 显示', calc.formatDisplay(calc.evaluate('0.0000001×0.0000001')), '1×10⁻¹⁴') // 1.5.17 修订：课本式
 eq('sin 尾巴仍归零', calc.formatDisplay(calc.evaluate('sin(180)')), '0')
 eq('cos 尾巴仍归零', calc.formatDisplay(calc.evaluate('cos(90)')), '0')
 eq('普通小数不受影响', calc.formatDisplay(1 / 3), '0.333333333333')

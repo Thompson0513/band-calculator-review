@@ -359,7 +359,7 @@ instD.expr = '1÷3'; instD.refreshCalc()
 ok('长小数结果无省略号', instD.resDisp.indexOf('...') < 0 && instD.resDisp.indexOf('…') < 0)
 eq('长小数结果按档缩字号', instD.resPx, 30)
 instD.expr = '123456789×1000000000'; instD.refreshCalc() // [1.5.13] 原 123456789×123456789 装不下精确值已改报「整数超出精确范围」（见 regression-1.5.13），本行改用精确乘积保住科学计数显示口径测试
-ok('大整数结果走科学计数且不超长', instD.resDisp.indexOf('e') >= 0 && instD.resDisp.length <= 20)
+ok('大整数结果走科学计数且不超长', instD.resDisp.indexOf('×10') >= 0 && instD.resDisp.length <= 20) // 1.5.17 修订：课本式（原判 e 记法）
 instD.expr = '2+3×4-5+6×7-8+9×1-2+3×4-5+6×7-8+9'; instD.refreshCalc()
 eq('超长算式字号降到最小档', instD.exprPx, 15)
 ok('超长算式显示末尾（刚打的看得见）', instD.exprDisp.length === 32 && instD.exprDisp.slice(-1) === '9')

@@ -107,7 +107,7 @@ eq('单位 lb→kg 纯小数', calc.formatDisplay(calc.convertUnit(1, 'lb', 'kg'
 eq('单位 km→m 纯小数', calc.formatDisplay(calc.convertUnit(0, 'km', 'm', 1)), '1,000')
 eq('单位 km→ft 纯小数', calc.formatDisplay(calc.convertUnit(0, 'km', 'ft', 1)), '3,280.83989501')
 ok('单位源码无 unitResStr', !ux.includes('unitResStr'), 'unitResStr 应已移除')
-ok('单位走 formatDisplay 口径', ux.includes("calc.formatDisplay(r) === '0'") && ux.includes("this.unitRes = '≈ ' + dispNum(r.toExponential(2)"), 'unitCompute 常规走 formatDisplay、极小非零改 ≈ 科学计数（1.5.16）')
+ok('单位走 formatDisplay 口径', ux.includes("calc.formatDisplay(r) === '0'") && ux.includes("this.unitRes = '≈ ' + dispNum(calc.sciStr(r.toExponential(2)))"), 'unitCompute 常规走 formatDisplay、极小非零改 ≈ 科学计数（1.5.16；外壳 1.5.17 改课本式 sciStr）')
 ok('单位结果无加注括号', !calc.formatDisplay(calc.convertUnit(0, 'in', 'cm', 1)).includes('（'), '结果串不应带（n/d）加注')
 
 // ---------- 10) 分数页双向锁定：有分数必有小数行（源码断言 + 计算层） ----------

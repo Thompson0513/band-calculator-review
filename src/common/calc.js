@@ -10,6 +10,13 @@
 
 const FUNC_NAMES = ['sin', 'cos', 'tan', 'log', 'ln', 'abs']
 
+// 上标指数映射（1.5.17）：课本式科学计数法把指数写成右上角小字（同 x² 的 ²），
+// ¹²³ 是带圈数字区的历史码点（U+00B9/B2/B3），其余在上标区（U+2070、U+2074–2079），
+// 负号用 U+207B ⁻。码点逐一核对见 tests/regression-1.5.17.mjs 的映射证据节
+const SUP_DIGITS = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' }
+const SUP_TO_DIGIT = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9' }
+const SUP_SET = '⁰¹²³⁴⁵⁶⁷⁸⁹'
+
 function tokenize(src) {
   const s = String(src).replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
   const toks = []
@@ -24,15 +31,43 @@ function tokenize(src) {
         if (s[j] === '.') { if (dot) break; dot = true }
         j++
       }
+      let ePart = false
       if (s[j] === 'e' && j + 1 < s.length && /[0-9+\-]/.test(s[j + 1])) {
         let k = j + 1
         if (s[k] === '+' || s[k] === '-') k++
         if (k < s.length && s[k] >= '0' && s[k] <= '9') {
           while (k < s.length && s[k] >= '0' && s[k] <= '9') k++
           j = k
+          ePart = true
         }
       }
-      const lit = s.slice(i, j)
+      // 课本式科学计数折叠（1.5.17）：显示层的「尾数×10＋上标指数」文本
+      //（单位带回的过程式等）再入算式时，在此折回与 e 记法等值的文字量。
+      // 只认机器格式，防与手打式子歧义：指数带 ⁻、或含 ² 以外的上标数字
+      //（键盘只有 ² 键、打不出），必为显示层产物；单个 ² 时 a×10² 与手打
+      // a×(10²) 恒等、也可折，但其后跟 ! % ° ^ ² 会改变结合时不折（保留
+      // 手打语义）。全 ² 的多位指数（如 ²²）与手打连按 ² 不可分，不折
+      let foldExp = null
+      let foldEnd = j
+      if (!ePart && s[j] === '*' && s[j + 1] === '1' && s[j + 2] === '0') {
+        let k = j + 3
+        let neg = false
+        if (s[k] === '⁻') { neg = true; k++ }
+        const d0 = k
+        while (k < s.length && SUP_SET.indexOf(s[k]) >= 0) k++
+        if (k > d0) {
+          const run = s.slice(d0, k)
+          let machine = neg
+          for (const c of run) if (c !== '²') machine = true
+          const singleSq = run === '²' && !(k < s.length && '!%°^²'.indexOf(s[k]) >= 0)
+          if (machine || singleSq) {
+            foldExp = (neg ? '-' : '') + run.split('').map((c) => SUP_TO_DIGIT[c]).join('')
+            foldEnd = k
+          }
+        }
+      }
+      const lit = foldExp !== null ? s.slice(i, j) + 'e' + foldExp : s.slice(i, j)
+      if (foldExp !== null) j = foldEnd
       const v = parseFloat(lit)
       if (isNaN(v)) throw new Error('bad number')
       // 纯整数文字量的精确性检查（1.5.10）：9007199254740993 这类整数在解析时已被舍入成
@@ -425,12 +460,37 @@ function formatPlain(v) {
   return String(c)
 }
 
+// 课本式科学计数（1.5.17，用户定版）：显示层禁用 e 记法，'d.dddde±X' 一律
+// 改写成 'd.dddd×10'＋上标指数（如 1e-7 → 1×10⁻⁷、-1.2346e+15 → -1.2346×
+// 10¹⁵，正指数不带 +、指数负号用 ⁻）。只改记法外壳：尾数沿用入串的既有
+// 精度，仅去掉尾数末尾的 0（与 trimSci 同口径）；尾数负号保持入串原样
+//（ASCII '-' 或 '−'），由调用方按既有口径（dispMinus/dm/dispNum）收尾。
+// 非 e 记法串原样返回
+function sciStr(s) {
+  const m = /^([\-−]?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/.exec(String(s))
+  if (!m) return String(s)
+  const frac = (m[3] || '').replace(/0+$/, '')
+  const exp = parseInt(m[4], 10)
+  const sup = (exp < 0 ? '⁻' : '') + String(Math.abs(exp)).split('').map((c) => SUP_DIGITS[c]).join('')
+  return m[1] + m[2] + (frac ? '.' + frac : '') + '×10' + sup
+}
+
+// 显示串 → 可解析纯文本（1.5.17）：'×10＋上标指数' 还原成 e 记法，供
+// dispExact 回读与历史回退串再入算式；e 记法与普通串原样返回，新旧通吃
+function sciToPlain(s) {
+  return String(s).replace(/×10(⁻?)([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g, function (w, neg, run) {
+    return 'e' + (neg ? '-' : '') + run.split('').map((c) => SUP_TO_DIGIT[c]).join('')
+  })
+}
+
 // 显示文本：整数部分加千分位
 // 显示串与真实值是否严格相等：相等用 =，只是四舍五入的近似值用 ≈
 function dispExact(v, s) {
   if (typeof v !== 'number' || !isFinite(v)) return false
-  // 显示串里的负号是 −（formatDisplay 统一转换），回读比较前先换回 ASCII
-  const p = parseFloat(String(s).replace(/,/g, '').replace(/−/g, '-'))
+  // 显示串里的负号是 −（formatDisplay 统一转换），回读比较前先换回 ASCII；
+  // 课本式科学计数（1.5.17）先经 sciToPlain 还原成 e 记法再 parseFloat，
+  // 旧 e 记法串不受影响、新旧都认
+  const p = parseFloat(sciToPlain(String(s)).replace(/,/g, '').replace(/−/g, '-'))
   if (p === v) return true
   // 0.1+0.2 这类：二进制浮点噪声不是数学近似——先把 v 按 15 位有效数字
   // 抹平噪声，再和显示串比；抹平后还对不上（如 1/3、√2）才是真近似
@@ -438,8 +498,9 @@ function dispExact(v, s) {
 }
 function eqSign(v, s) { return dispExact(v, s === undefined ? formatDisplay(v) : s) ? '=' : '≈' }
 // 显示层负号统一成 −（与算式行、方程标题行口径一致，1.5.15）：formatDisplay
-// 旧版原样输出 ASCII '-'，结果行/答案行/判别式行与同屏的「−」混排；科学计数法
-// 指数里的负号保持 ASCII（与既有显示惯例一致，如 −5e-8）
+// 旧版原样输出 ASCII '-'，结果行/答案行/判别式行与同屏的「−」混排。
+// 1.5.17 起科学计数显示改课本式（sciStr，指数是上标 ⁻、没有 ASCII '-'），
+// 本函数的 e 后保护只剩历史旧串等存量文本会走到，保留不动
 function dispMinus(s) {
   let out = ''
   for (let i = 0; i < s.length; i++) {
@@ -453,7 +514,8 @@ function dispMinus(s) {
 function formatDisplay(v) {
   const s = formatPlain(v)
   if (s === '错误' || s === '溢出') return s
-  if (s.indexOf('e') >= 0 || s.indexOf('E') >= 0) return dispMinus(s)
+  // 科学计数改课本式（1.5.17）：sciStr 换记法外壳，dispMinus 只收尾数负号
+  if (s.indexOf('e') >= 0 || s.indexOf('E') >= 0) return dispMinus(sciStr(s))
   const neg = s[0] === '-'
   const body = neg ? s.slice(1) : s
   const parts = body.split('.')
@@ -795,6 +857,8 @@ export default {
   cleanNum: cleanNum,
   formatPlain: formatPlain,
   formatDisplay: formatDisplay,
+  sciStr: sciStr,
+  sciToPlain: sciToPlain,
   toFraction: toFraction,
   fracIsExact: fracIsExact,
   fracCalc: fracCalc,

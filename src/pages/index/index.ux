@@ -545,8 +545,8 @@ function fmtPoly(a, b, c, compact) {
   const push = function (coef, sym) {
     if (coef === 0) return
     const mag = Math.abs(coef)
-    // 非零系数被 DP 显示成 0 时改科学计数（1.5.11）：1e-7 级系数旧版在「整理成」行显示 0x²，与实际按二次求解矛盾
-    const magStr = DP(mag) === '0' ? mag.toPrecision(2).replace(/-/g, '−') : DP(mag)
+    // 非零系数被 DP 显示成 0 时改科学计数（1.5.11）：1e-7 级系数旧版在「整理成」行显示 0x²，与实际按二次求解矛盾；外壳改课本式（1.5.17）
+    const magStr = DP(mag) === '0' ? calc.sciStr(mag.toPrecision(2)) : DP(mag)
     const body = sym ? (mag === 1 ? sym : magStr + sym) : magStr
     terms.push({ neg: coef < 0, body: body })
   }
@@ -611,11 +611,13 @@ function fitResStr(v, cap) {
   // 纯整数太长：改科学计数法，别把精确整数四舍五入
   if (/^-?\d+$/.test(calc.formatPlain(v))) {
     let p = 10
-    let sci = v.toPrecision(p)
-    while (sci.length > cap && p > 5) { p--; sci = v.toPrecision(p) }
-    // 负号过 dm 统一（1.5.16）：toPrecision 直出 ASCII '-'，1.5.15 的全应用
-    // 负号统一漏了这一条分支（第十一轮复审实证）；指数负号保持 ASCII（dm 口径）
-    return dm(sci)
+    // 课本式外壳（1.5.17）：长度按转换后的 ×10 上标串量——新写法比 e 记法
+    // 长 1–2 字，同 cap 下可能比旧版少 1 位有效数字（分级降精度，保住 cap）
+    let sci = dm(calc.sciStr(v.toPrecision(p)))
+    while (sci.length > cap && p > 5) { p--; sci = dm(calc.sciStr(v.toPrecision(p))) }
+    // 负号过 dm 统一（1.5.16）：toPrecision 直出 ASCII '-'，须在 sciStr 之后
+    // 再过 dm（指数已是上标 ⁻、dm 不会误伤）
+    return sci
   }
   let p = 12
   while (s.length > cap && p > 7) { p--; s = calc.formatDisplay(Number(v.toPrecision(p))) }
@@ -798,10 +800,11 @@ function fracChipText(fracOn, frac, v, mainIsFrac) {
   return fs.length <= 7 ? fs : '看分数'
 }
 // 图象信息行行宽估算（像素）：汉字/全角按 19、空格按 5、其余按 10，另加模板补的首空格 5；
-// 与真机验过的 30 字复数根行（估算 ≈275px）对齐，整行 ≤300 不被省略号截断
+// 与真机验过的 30 字复数根行（估算 ≈275px）对齐，整行 ≤300 不被省略号截断。
+// 上标指数字符（⁰-⁹、⁻，1.5.17）是窄字形，与普通半角同按 10 估算，别按全角 19 虚增
 function linePx(s) {
   let w = 5
-  for (const ch of s) w += (ch === ' ') ? 5 : ((ch.charCodeAt(0) > 255 && ch !== '−') ? 19 : 10)
+  for (const ch of s) w += (ch === ' ') ? 5 : ((ch.charCodeAt(0) > 255 && ch !== '−' && '⁰¹²³⁴⁵⁶⁷⁸⁹⁻'.indexOf(ch) < 0) ? 19 : 10)
   return w
 }
 // 图象信息行里的单个值：有精确分数（分母≠1）时并列「分数 符号 小数」，符号走 eqSign 回读口径
@@ -911,7 +914,9 @@ function unitPxOf(s) {
 // 过程式经 calc.evaluate 求值必须与 calc.convertUnit 一致（浮点容差内）：
 // 纯比率类按 输入×比率 / 输入÷(1/比率) 组式，比率用 formatPlain 口径（12 位有效数字）写；
 // 温度按 convertUnit 同路组仿射式（先归摄氏再转目标，系数用教材形 1.8=9/5）。
-function unitNumStr(x) { return dispNum(calc.formatPlain(x)) }
+// 极端量级的数字写课本式（1.5.17）：sciStr 把 formatPlain 的 e 记法换成
+// ×10 上标形，过程式回主算式后由 tokenizer 折叠识别、求值等值（见 calc.js）
+function unitNumStr(x) { return dispNum(calc.sciStr(calc.formatPlain(x))) }
 // 倒数是否「干净」到适合写成 ÷ 形式：无科学计数法、小数尾巴 ≤4 位（如 2.54、30.48）；
 // 2.20462262185 这类长尾不算干净，回退 ×比率原值（如磅→千克 ×0.45359237，因子本身精确）。
 function unitRatioClean(x) {
@@ -951,7 +956,7 @@ function unitCarryExpr(curExpr, proc) {
 }
 function termNum(a) {
   const t = FD(a)
-  return t.length <= 10 ? t : a.toPrecision(4)
+  return t.length <= 10 ? t : calc.sciStr(a.toPrecision(4))
 }
 function fmtPolyFit(a, b, c) {
   let head = '整理成 ' + fmtPoly(a, b, c) + ' = 0'
@@ -968,7 +973,7 @@ function fmtPolyFit(a, b, c) {
   if (head.length <= 26) return head
   return '整理成 ' + fmtPoly(a, b, c, true) + ' = 0'
 }
-function DA(x) { if (Math.abs(x) < 10000) return DP(x); return x.toPrecision(3).replace(/-/g, '−') }
+function DA(x) { if (Math.abs(x) < 10000) return DP(x); return calc.sciStr(x.toPrecision(3)).replace(/-/g, '−') }
 // 科学计数串去尾零：'1.0000000e-7' → '1e-7'、'1.2300000e+20' → '1.23e+20'
 function trimSci(s) {
   const m = /^(-?\d)(?:\.(\d+))?(e.*)?$/.exec(s)
@@ -976,29 +981,60 @@ function trimSci(s) {
   const frac = (m[2] || '').replace(/0+$/, '')
   return m[1] + (frac ? '.' + frac : '') + (m[3] || '')
 }
+// 算式回显渲染（1.5.17）：内部式子里的「×10^指数」段（×10 幂键产物，手打的
+// 独立 10^ 段同样处理）渲染成课本式「×10＋上标指数」；指数还没输完（无数字）
+// 时保留 '^' 与 '−' 原样，表示正在输入指数（同卡西欧回显习惯），有一位数字
+// 即转上标。只渲染 exprDisp 与历史 expr 回显，内部存储/求值一律不动
+const SUPD = '⁰¹²³⁴⁵⁶⁷⁸⁹'
+function sciEcho(s) {
+  s = String(s)
+  let out = ''
+  let i = 0
+  while (i < s.length) {
+    const mul = s.startsWith('×10^', i)
+    const bare = !mul && s.startsWith('10^', i) && (i === 0 || '+−×÷(^'.indexOf(s[i - 1]) >= 0)
+    if (mul || bare) {
+      let j = i + (mul ? 4 : 3)
+      let neg = false
+      if (s[j] === '−' || s[j] === '-') { neg = true; j++ }
+      let digs = ''
+      while (j < s.length && s[j] >= '0' && s[j] <= '9') { digs += s[j]; j++ }
+      if (digs) out += (mul ? '×' : '') + '10' + (neg ? '⁻' : '') + digs.split('').map((c) => SUPD[Number(c)]).join('')
+      else out += (mul ? '×' : '') + '10^' + (neg ? '−' : '')
+      i = j
+      continue
+    }
+    out += s[i]
+    i++
+  }
+  return out
+}
 function DP(x) {
   if (typeof x !== 'number' || !isFinite(x)) return FD(x).replace(/-/g, '−')
   const r = Math.round(x * 10000) / 10000
   if (r === x || (r !== 0 && r !== 1 && r !== -1)) {
     let t = String(r)
     if (t.length > 12) t = r.toPrecision(8)
-    return t.replace(/^-/, '−')
+    return calc.sciStr(t).replace(/^-/, '−')
   }
   // 身份塌缩时改自适应精度（1.5.16）：四位小数口径下，非零小量被舍成 0
-  //（交点 (0, −1e-7) 显示成 (0, 0)）、底数 1.00000001 被舍成 1（标题 y = 1ˣ
-  // 是另一个函数），第十一轮复审实证。这两种塌缩才改走原值：字符串 ≤12 字
-  // 直接用原值，更长或科学计数形用 8 位有效数字去尾零；其余值（如顶点
-  // −0.5159）维持 4 位小数的既定简洁口径不变。负号只换首位——科学计数
-  // 的指数负号保持 ASCII，与 formatDisplay 口径一致
+  //（交点 (0, −1×10⁻⁷) 显示成 (0, 0)）、底数 1.00000001 被舍成 1（标题
+  // y = 1ˣ 是另一个函数），第十一轮复审实证。这两种塌缩才改走原值：字符串
+  // ≤12 字直接用原值，更长或科学计数形用 8 位有效数字去尾零；其余值（如
+  // 顶点 −0.5159）维持 4 位小数的既定简洁口径不变。出口统一过 sciStr
+  //（1.5.17）：e 记法改课本式、负号只换首位（指数已是上标 ⁻）
   let t = String(x)
   if (t.length > 12 || t.includes('e')) t = trimSci(x.toPrecision(8))
-  return t.replace(/^-/, '−')
+  return calc.sciStr(t).replace(/^-/, '−')
 }
-// 把纯文本结果放回算式时只换开头的负号：科学计数法的指数负号（如 1e-7）
-// 必须是 ASCII '-'，否则再求值会被当成 1×e−7 算错
+// 把纯文本结果放回算式时只换开头的负号：1.5.17 前科学计数是指数负号
+//（1e-7）必须是 ASCII '-' 才可再求值；课本式（1×10⁻⁷）的指数是上标 ⁻、
+// 与尾数负号互不干扰，求值端 tokenizer 有折叠识别（见 calc.js），本函数
+// 口径不变
 function dispNum(plain) { return String(plain).replace(/^-/, '−') }
 // 显示串负号统一成 −（1.5.15，与 calc.formatDisplay 同口径）：分数串是页面用原始
-// 数字拼的、不经 formatDisplay，单独过一遍；科学计数法指数里的负号保持 ASCII
+// 数字拼的、不经 formatDisplay，单独过一遍；1.5.17 起科学计数指数已是上标 ⁻、
+// 串里不再有需要保护的 ASCII 指数负号，e 后保护只剩存量旧串会走到，保留不动
 function dm(s) {
   s = String(s)
   let out = ''
@@ -1032,7 +1068,8 @@ function autoRange(type, V) {
 function isRealCalc(expr) {
   // 科学计数法只在「数字后跟 e」时才剥离（1.5.14）：旧版无条件剥 e±数字，把
   // 常数 e 的 e+1、e−1 也当成指数吞掉，这类计算因此漏记历史（ChatGPT 第十份报告实证）
-  const t = String(expr).replace(/\d[eE][+\-−]?\d+/g, '')
+  // 课本式（1.5.17）：单位带回的 ×10 上标段同样先剥离，免得纯数值带回被误判有运算符
+  const t = String(expr).replace(/\d[eE][+\-−]?\d+/g, '').replace(/×10[⁻]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, '')
   return /[+\-−×÷^%!²°√]|sin\(|cos\(|tan\(|log\(|ln\(|abs\(/.test(t)
 }
 function fmtHistTime(ts) {
@@ -1059,7 +1096,10 @@ function niceStep(span, target) {
 }
 function fmtTick(v, step) {
   const s = calc.formatPlain(v)
-  if (s.length <= 6) return dispNum(s)
+  // e 形短串也要走科学计数分支（1.5.17 盘点发现的存量泄漏）：formatPlain
+  // 对 1e-7 这类值直接给 '1e-7'（仅 4 字），旧版命中 ≤6 字分支原样返回、
+  // 刻度上出现 e 记法；新版一律改课本式
+  if (s.length <= 6 && s.indexOf('e') < 0 && s.indexOf('E') < 0) return dispNum(s)
   // 大/小量级刻度改科学计数（1.5.15）：极端窗口下全位整数标签长达 21 字，塞进
   // 24–26px 的刻度格必然重叠成一团看不清；用 toExponential 强制指数形——
   // toPrecision 对 1e-5 量级会退回小数长串
@@ -1068,14 +1108,15 @@ function fmtTick(v, step) {
   // '1e+9'（第十一轮复审实证）。位数按「末位单位 ≤ 步长」反推：d ≥ E+1−log10(step)
   //（E 为量级指数），无步长信息时维持 2 位；上限 15 位（双精度可靠十进制
   // 位数内；1e9 整数边界处 E 跳变、需 14 位才分得开，13 位不够）；尾零去掉。
-  // 纯文本仍 ≤6 字、常规科学标签仍是 2 位短标签（如 −2.5e+20），不回归；
-  // 标签硬上限 22 字（符号＋16 字尾数＋5 字指数），静态宽度复核见 BUGLOG
+  // 课本式外壳（1.5.17）：常规标签如 −2.5×10²⁰（9 字，比 e 记法长 1 字）；
+  // 标签硬上限仍是 22 字（符号 1＋尾数 16＋「×10」2＋上标指数 ≤3），静态
+  // 宽度复核见 BUGLOG 1.5.17
   let digs = 2
   if (typeof step === 'number' && step > 0 && isFinite(step) && v !== 0 && isFinite(v)) {
     const E = Math.floor(Math.log10(Math.abs(v)))
     digs = Math.min(15, Math.max(2, Math.ceil(E + 1 - Math.log10(step))))
   }
-  return dispNum(trimSci(v.toExponential(digs - 1)))
+  return dispNum(calc.sciStr(trimSci(v.toExponential(digs - 1))))
 }
 function TERM(coef, suffix, first) {
   if (coef === 0) return ''
@@ -1252,7 +1293,7 @@ export default {
       { v: 'sin(', label: 'sin', cls: 'fn', fs: 18 }, { v: 'cos(', label: 'cos', cls: 'fn', fs: 18 }, { v: 'tan(', label: 'tan', cls: 'fn', fs: 18 }, { v: 'log(', label: 'log', cls: 'fn', fs: 18 }, { v: 'ln(', label: 'ln', cls: 'fn', fs: 19 },
       { v: '√(', label: '√', cls: 'fn', fs: 23 }, { v: '³√(', label: '³√', cls: 'fn', fs: 20 }, { v: '²', label: 'x²', cls: 'fn', fs: 19 }, { v: '^', label: 'xʸ', cls: 'fn', fs: 19 }, { v: '!', label: 'n!', cls: 'fn', fs: 19 },
       { v: 'abs(', label: 'abs', cls: 'fn', fs: 18 }, { v: '°', label: '°', cls: 'fn', fs: 23 }, { v: '(', label: '(', cls: 'fn', fs: 25 }, { v: ')', label: ')', cls: 'fn', fs: 25 }, { v: 'back', label: '←', cls: 'fn', fs: 23 },
-      { v: '123', label: '123', cls: 'op', fs: 19 }, { v: 'C', label: 'C', cls: 'fnr', fs: 23 }, { v: 'deg', label: this.degMode ? '角度制' : '弧度制', cls: 'op', fs: 15 }, { v: 'e', label: 'e', cls: 'fn', fs: 23 }, { v: 'eq', label: '=', cls: 'eq', fs: 27 }
+      { v: '123', label: '123', cls: 'op', fs: 19 }, { v: 'C', label: 'C', cls: 'fnr', fs: 23 }, { v: 'deg', label: this.degMode ? '角度制' : '弧度制', cls: 'op', fs: 15 }, { v: 'x10', label: '×10ˣ', cls: 'fn', fs: 16 }, { v: 'eq', label: '=', cls: 'eq', fs: 27 }
     ]
   },
   onInit() {
@@ -1311,7 +1352,10 @@ export default {
                 return h && typeof h.expr === 'string' && typeof h.res === 'string' &&
                   h.expr.length <= 200 && h.res.length <= 100 && isRealCalc(h.expr)
               }).map(function (h) {
-                const o = { expr: h.expr, res: h.res, sgn: h.sgn, ts: (Number.isFinite(h.ts) && Math.abs(h.ts) <= 8640000000000000) ? h.ts : 0 }
+                // res 显示迁移（1.5.17）：旧记录的 res 是 e 记法显示串，读入时
+                // 换成课本式再展示（sciStr 非 e 串原样返回）；回退再入算式时
+                // useHist 经 sciToPlain 还原，新旧都通
+                const o = { expr: h.expr, res: calc.sciStr(h.res), sgn: h.sgn, ts: (Number.isFinite(h.ts) && Math.abs(h.ts) <= 8640000000000000) ? h.ts : 0 }
                 // 全精度回读串 rf（1.5.14）：合法才保留——这层重组若漏带 rf，
                 // 历史回算会在重启后悄悄退回 12 位文本（自攻实测抓到）；旧记录
                 // 没有 rf 时 useHist 自动回退显示文本
@@ -1473,7 +1517,10 @@ export default {
   refreshCalc() {
     const ex = this.expr
     this.exprPx = ex.length <= 14 ? 32 : (ex.length <= 20 ? 26 : (ex.length <= 26 ? 21 : (ex.length <= 29 ? 17 : 15)))
-    this.exprDisp = this.justEq ? '' : (ex.length <= 32 ? ex : ex.slice(-32))
+    // 回显走课本式渲染（1.5.17）：×10^ 段转 ×10＋上标（sciEcho），其余原样；
+    // 字号档仍按内部长度算（上标形只短不长，不会比旧口径更挤）
+    const echo = sciEcho(ex)
+    this.exprDisp = this.justEq ? '' : (echo.length <= 32 ? echo : echo.slice(-32))
     this.canFrac = false
     if (!ex) { this.resDisp = '0'; this.resPx = 50; this.previewOk = false; return }
     // 求值前自动收尾：去掉末尾没写完的运算符，补齐没关上的左括号（真计算器都这么干）
@@ -1604,6 +1651,19 @@ export default {
       }
     }
     if (this.expr.length >= 60) return
+    if (v === 'x10') {
+      // ×10 幂键（1.5.17）：替代原常数 e 键（e 记法混淆源头、课本机同位）。
+      // 尾数/右括号/后缀之后接 '×10^'，空式子/运算符/左括号之后接 '10^'，
+      // 随后用数字键与 − 键输指数；内部就是普通 ^ 表达式，存储与求值不动，
+      // 回显由 sciEcho 渲染成课本式。常数 e 自此无键盘入口（见 BUGLOG）
+      const ex0 = this.expr
+      const l0 = ex0.slice(-1)
+      if (!ex0) this.expr = '10^'
+      else if ('+−×÷(^'.indexOf(l0) >= 0) this.expr = ex0 + '10^'
+      else this.expr = ex0 + '×10^'
+      this.refreshCalc()
+      return
+    }
     const last = this.expr.slice(-1)
     if (FN_TOKENS.indexOf(v) >= 0) {
       if (last && VAL_END.indexOf(last) >= 0) this.expr += '×' + v
@@ -1650,8 +1710,9 @@ export default {
     this.buzz()
     if (!item || typeof item.res !== 'string') return
     if (this.gatePaid()) return
-    // 点历史回算优先用记录里的全精度值（1.5.14，旧记录没有 rf 时回退显示文本）
-    this.expr = dispNum(item.rf || item.res.replace(/,/g, ''))
+    // 点历史回算优先用记录里的全精度值（1.5.14，旧记录没有 rf 时回退显示文本）；
+    // 回退串先经 sciToPlain 把课本式还原成可解析的 e 记法（1.5.17），旧 e 串原样
+    this.expr = dispNum(item.rf || calc.sciToPlain(item.res.replace(/,/g, '')))
     this.fracOn = false
     this.justEq = true
     this.view = 'calc'
@@ -1664,7 +1725,10 @@ export default {
     if (this.histPage > pages - 1) this.histPage = pages - 1
     if (this.histPage < 0) this.histPage = 0
     this.histDisp = this.hist.slice(this.histPage * 5, this.histPage * 5 + 5).map(function (h) {
-      return { expr: h.expr, res: h.res, sgn: h.sgn, ts: h.ts, px: h.expr.length > 26 ? 12 : 15, time: h.ts ? fmtHistTime(h.ts) : (h.time || '') }
+      // expr 回显同样走课本式渲染（1.5.17）：存储的内部式子不动，只渲染；
+      // 字号按渲染后长度选（×10^ 段转上标后更短）
+      const e2 = sciEcho(h.expr)
+      return { expr: e2, res: h.res, sgn: h.sgn, ts: h.ts, px: e2.length > 26 ? 12 : 15, time: h.ts ? fmtHistTime(h.ts) : (h.time || '') }
     })
     this.histPageTxt = (this.histPage + 1) + ' / ' + pages
     this.histHasOlder = this.histPage < pages - 1
@@ -1713,8 +1777,9 @@ export default {
     else if (r !== 0 && calc.formatDisplay(r) === '0') {
       // 极小非零结果（1.5.16）：cleanNum 的相消尾巴判别会把 1.65e-16 这类真值
       // 归零（既定边界），旧版单位页照样显示裸 '0'、连近似标记都没有（第十一
-      // 轮复审实证）。改走科学计数并带 ≈，让学生知道这不是精确的 0
-      this.unitRes = '≈ ' + dispNum(r.toExponential(2).replace(/\.?0+e/, 'e'))
+      // 轮复审实证）。改走科学计数并带 ≈，让学生知道这不是精确的 0；
+      // 外壳改课本式（1.5.17）：≈ 1.65×10⁻¹⁶
+      this.unitRes = '≈ ' + dispNum(calc.sciStr(r.toExponential(2)))
     }
     else this.unitRes = calc.formatDisplay(r)
     this.unitResPx = unitPxOf(this.unitRes === '' ? '—' : this.unitRes)
@@ -2117,7 +2182,7 @@ export default {
           // 复审实证）。收紧后：一侧含二元减法（值后跟 −/-；科学计数指数里的
           // 负号先剥掉再看）才允许 ≤6e-17 的尾巴吸收；否则零侧必须全等
           //（地板 0）。0.1+0.2−0.3=0 等经典相消不受影响
-          const sideHasSub = (s) => /[0-9)π%²!°][-−]/.test(String(s).replace(/\d[eE][+\-−]?\d+/g, '#'))
+          const sideHasSub = (s) => /[0-9)π%²!°][-−]/.test(String(s).replace(/\d[eE][+\-−]?\d+/g, '#').replace(/×10[⁻]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, '#'))
           const tailOk = sideHasSub(parts[0]) || sideHasSub(parts[1])
           const isEq = bothLit ? lv === rv : ((lv !== 0 && rv !== 0)
             ? Math.abs(lv - rv) <= 3 * Number.EPSILON * scMax
@@ -2127,7 +2192,7 @@ export default {
             let ll = ansStr('左边', lv, 26), rl = ansStr('右边', rv, 26)
             // 两边收精度后的显示串若长得一模一样（如 1e16 与 10000000000000010 都被
             // 收成 1.000000000e+16），学生看不出差在哪：改用全位原文展示（1.5.13）
-            if (ll.slice(3) === rl.slice(3)) { ll = '左边 = ' + dm(calc.formatPlain(lv)); rl = '右边 = ' + dm(calc.formatPlain(rv)) }
+            if (ll.slice(3) === rl.slice(3)) { ll = '左边 = ' + dm(calc.sciStr(calc.formatPlain(lv))); rl = '右边 = ' + dm(calc.sciStr(calc.formatPlain(rv))) }
             this.eqLines = ['两边不相等', ll, rl]
           }
         } else {

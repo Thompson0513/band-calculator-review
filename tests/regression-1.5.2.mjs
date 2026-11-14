@@ -73,7 +73,7 @@ eq('三角 A=15/4 分数与原行等宽', trigInfoLines(3.75)[1], '振幅 15/4�
 eq('三角 A=25/2 分数与原行等宽', trigInfoLines(12.5)[1], '振幅 25/2，最高 12.5、最低 −12.5')
 { const ls = trigInfoLines(2 / 3)
   ok('三角 A=2/3 带分数且不超宽', ls[1].indexOf('2/3') >= 0 && linePx(ls[1]) <= 300, ls[1]) }
-eq('三角 DA 分支', JSON.stringify(trigInfoLines(10000.5)), JSON.stringify(['周期 360°（一个完整波形）', '振幅 20001/2 ≈ 1.00e+4', '最高 1.00e+4、最低 −1.00e+4']))
+eq('三角 DA 分支', JSON.stringify(trigInfoLines(10000.5)), JSON.stringify(['周期 360°（一个完整波形）', '振幅 20001/2 ≈ 1×10⁴', '最高 1×10⁴、最低 −1×10⁴'])) // 1.5.17 修订：课本式
 ok('三角行数不增', trigInfoLines(0.5).length === 2 && trigInfoLines(10000.5).length === 3)
 
 // ---------- 7) inv/exp/log/abs：信息行没有可标注的计算值（恒过点/顶点都是整数、inv 全是文字行），保持原样 ----------

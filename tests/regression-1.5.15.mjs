@@ -93,12 +93,12 @@ eq('T1 常规刻度 0', fmtTick(0), '0')
 eq('T2 常规刻度 −2', fmtTick(-2), '−2')
 eq('T3 常规刻度 0.5', fmtTick(0.5), '0.5')
 eq('T4 常规刻度 999999（6 字）', fmtTick(999999), '999999')
-eq('T5 百万改科学计数', fmtTick(1000000), '1e+6')
-eq('T6 负百万', fmtTick(-1000000), '−1e+6')
-eq('T7 H 例 Y 刻度（2.5e20 量级）', fmtTick(-249999999500000000000), '−2.5e+20')
-eq('T8 H 例 X 刻度（5e11 量级）', fmtTick(-500000030000), '−5e+11')
-ok('T9 极端刻度长度 ≤8', fmtTick(-249999999499999800000).length <= 8 && fmtTick(123456789012345).length <= 8)
-eq('T10 微小刻度', fmtTick(0.000012345), '1.2e-5')
+eq('T5 百万改科学计数', fmtTick(1000000), '1×10⁶') // 1.5.17 修订：课本式
+eq('T6 负百万', fmtTick(-1000000), '−1×10⁶') // 1.5.17 修订：课本式
+eq('T7 H 例 Y 刻度（2.5e20 量级）', fmtTick(-249999999500000000000), '−2.5×10²⁰') // 1.5.17 修订：课本式
+eq('T8 H 例 X 刻度（5e11 量级）', fmtTick(-500000030000), '−5×10¹¹') // 1.5.17 修订：课本式
+ok('T9 极端刻度长度 ≤9（1.5.17 修订：课本式比 e 记法长 1 字）', fmtTick(-249999999499999800000).length <= 9 && fmtTick(123456789012345).length <= 9)
+eq('T10 微小刻度', fmtTick(0.000012345), '1.2×10⁻⁵') // 1.5.17 修订：课本式
 {
   const i = makeInst()
   i.unlocked = true
@@ -115,7 +115,7 @@ eq('T10 微小刻度', fmtTick(0.000012345), '1.2e-5')
 
 // ---------- M. 负号字形统一 ----------
 eq('M1 formatDisplay 负数千分位', calc.formatDisplay(-1234.5), '−1,234.5')
-eq('M2 formatDisplay 科学计数指数负号保持 ASCII', calc.formatDisplay(-2.5e-16), '−2.5e-16')
+eq('M2 formatDisplay 科学计数改课本式（1.5.17 修订：原 pin 为 e 记法＋指数 ASCII 负号口径）', calc.formatDisplay(-2.5e-16), '−2.5×10⁻¹⁶')
 eq('M3 formatDisplay 正数不变', calc.formatDisplay(1234.5), '1,234.5')
 eq('M4 eqSign 对负小数仍判 =（dispExact 回读兼容）', calc.eqSign(-0.75), '=')
 eq('M5 主界面负小数', feedCalc('0−3÷4').resDisp, '= −0.75')
