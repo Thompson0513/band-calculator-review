@@ -26,7 +26,7 @@ function extractFn(name) {
   throw new Error('函数未配平 ' + name)
 }
 const F = new Function('calc',
-  ['fitResStr', 'hardFit', 'ansStr', 'cplxStr', 'fracChipText'].map(extractFn).join('\n') +
+  ['dm', 'fitResStr', 'hardFit', 'ansStr', 'cplxStr', 'fracChipText'].map(extractFn).join('\n') +
   '\nreturn { fitResStr, hardFit, ansStr, cplxStr, fracChipText }'
 )(calc)
 const { ansStr, cplxStr, fracChipText } = F
@@ -49,7 +49,7 @@ eq('零根不加分数', ansStr('x', 0, 27), 'x = 0')
 { const r = calc.solveQuad(2, -3, 1)
   eq('有理根整数 x1', ansStr('x1', r.x1, 28), 'x1 = 1')
   eq('有理根分数 x2', ansStr('x2', r.x2, 28), 'x2 = 1/2 = 0.5') }
-{ const r = calc.solveQuad(1, 2, 1); eq('重根', ansStr('x', r.x, 28), 'x = -1') }
+{ const r = calc.solveQuad(1, 2, 1); eq('重根', ansStr('x', r.x, 28), 'x = −1') }
 
 // ---------- 4) 方程组：x/y 各自并列 ----------
 { const r = calc.solveSystem(3, 2, 7, 1, -1, 1)
@@ -70,7 +70,7 @@ eq('零根不加分数', ansStr('x', 0, 27), 'x = 0')
 { const r = calc.solveQuad(1, 0, 1)  // 实部 0：无分数，与旧格式一致
   eq('复数根实部为 0', cplxStr('x1', r, '+'), 'x1 = 0 + 1i') }
 { const r = calc.solveQuad(2, 2, 1)  // 实部 -1/2
-  eq('复数根负实部分数', cplxStr('x1', r, '+'), 'x1 = -1/2 = -0.5 + 0.5i') }
+  eq('复数根负实部分数', cplxStr('x1', r, '+'), 'x1 = −1/2 = −0.5 + 0.5i') }
 for (const [a, b, c] of [[3, 7, 5], [7, -3, 11], [123, -45, 678], [1, 0, 4], [5, 1, 9]]) {
   const r = calc.solveQuad(a, b, c)
   if (r.type === 'complex') ok(`复数根行宽 ${a}/${b}/${c}`, cplxStr('x1', r, '+').length <= 30, cplxStr('x1', r, '+'))
@@ -123,7 +123,7 @@ eq('连接号 1/6 截断用 ≈', ansStr('x', 1 / 6, 27), 'x = 1/6 ≈ 0.1666666
 { const r = calc.solveQuad(162, -3, 2)
   ok('连接号 复数根实部 1/108 用 ≈', cplxStr('x1', r, '+').indexOf('1/108 ≈ 0.00926') >= 0, cplxStr('x1', r, '+')) }
 { const r = calc.solveQuad(2, 2, 1)
-  ok('连接号 复数根实部 -1/2 用 =', cplxStr('x1', r, '+').indexOf('-1/2 = -0.5') >= 0, cplxStr('x1', r, '+')) }
+  ok('连接号 复数根实部 -1/2 用 =', cplxStr('x1', r, '+').indexOf('−1/2 = −0.5') >= 0, cplxStr('x1', r, '+')) }
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (bad.length) { console.log(bad.join('\n')); process.exit(1) }

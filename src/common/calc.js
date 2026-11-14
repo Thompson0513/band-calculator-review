@@ -391,17 +391,31 @@ function formatPlain(v) {
 // 显示串与真实值是否严格相等：相等用 =，只是四舍五入的近似值用 ≈
 function dispExact(v, s) {
   if (typeof v !== 'number' || !isFinite(v)) return false
-  const p = parseFloat(String(s).replace(/,/g, ''))
+  // 显示串里的负号是 −（formatDisplay 统一转换），回读比较前先换回 ASCII
+  const p = parseFloat(String(s).replace(/,/g, '').replace(/−/g, '-'))
   if (p === v) return true
   // 0.1+0.2 这类：二进制浮点噪声不是数学近似——先把 v 按 15 位有效数字
   // 抹平噪声，再和显示串比；抹平后还对不上（如 1/3、√2）才是真近似
   return p === parseFloat(v.toPrecision(15))
 }
 function eqSign(v, s) { return dispExact(v, s === undefined ? formatDisplay(v) : s) ? '=' : '≈' }
+// 显示层负号统一成 −（与算式行、方程标题行口径一致，1.5.15）：formatDisplay
+// 旧版原样输出 ASCII '-'，结果行/答案行/判别式行与同屏的「−」混排；科学计数法
+// 指数里的负号保持 ASCII（与既有显示惯例一致，如 −5e-8）
+function dispMinus(s) {
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (ch === '-' && !(i > 0 && (s[i - 1] === 'e' || s[i - 1] === 'E'))) out += '−'
+    else out += ch
+  }
+  return out
+}
+
 function formatDisplay(v) {
   const s = formatPlain(v)
   if (s === '错误' || s === '溢出') return s
-  if (s.indexOf('e') >= 0 || s.indexOf('E') >= 0) return s
+  if (s.indexOf('e') >= 0 || s.indexOf('E') >= 0) return dispMinus(s)
   const neg = s[0] === '-'
   const body = neg ? s.slice(1) : s
   const parts = body.split('.')
@@ -412,7 +426,7 @@ function formatDisplay(v) {
     intPart = intPart.slice(0, -3)
   }
   grouped = intPart + grouped
-  return (neg ? '-' : '') + grouped + (parts[1] ? '.' + parts[1] : '')
+  return dispMinus((neg ? '-' : '') + grouped + (parts[1] ? '.' + parts[1] : ''))
 }
 
 // ---------- 小数转分数（连分数，最大分母 10000） ----------

@@ -67,7 +67,7 @@ return inst
   inst.eqExpr = '100000000x+0.0000001x^2=100000000'; inst.eqExpr2 = ''; inst.eqSolve()
   ok('A 原例判二次双根（got=' + JSON.stringify(inst.eqLines) + '）', inst.eqLines.length >= 4 && inst.eqLines[2].indexOf('x1') === 0)
   const x2line = inst.eqLines.find(l => l.indexOf('x2') === 0) || ''
-  const x2v = parseFloat(x2line.split('=')[1].replace(/,/g, '').trim())
+  const x2v = parseFloat(x2line.split('=')[1].replace(/,/g, '').replace(/\u2212/g, '-').trim())
   ok('A 大根相对误差 <2%（got=' + x2line + '）', Math.abs(x2v + 1e15) / 1e15 < 0.02)
   ok('A 表头不再显示 0x²（got=' + inst.eqLines[0] + '）', inst.eqLines[0].indexOf('0x²') < 0 && inst.eqLines[0].indexOf('e−8') >= 0 || inst.eqLines[0].indexOf('e-8') >= 0)
 }

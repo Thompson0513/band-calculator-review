@@ -639,7 +639,7 @@ function ansStr(name, v, maxLen) {
   if (fr && fr.d !== 1) {
     // 分数只是容差内近似（如 1.0000000002÷3 认作 1/3）时连接号用 ≈，不许冒充精确
     //（1.5.12，ChatGPT 第八份报告实证）；精确分数维持「名 = 分数 = 小数」
-    const fs = (name ? name + (calc.fracIsExact(v, fr) ? ' = ' : ' ≈ ') : (calc.fracIsExact(v, fr) ? '= ' : '≈ ')) + fr.n + '/' + fr.d
+    const fs = (name ? name + (calc.fracIsExact(v, fr) ? ' = ' : ' ≈ ') : (calc.fracIsExact(v, fr) ? '= ' : '≈ ')) + dm(fr.n + '/' + fr.d)
     const dec = hardFit(v, Math.max(maxLen - fs.length - 3, 4))
     if (fs.length + 3 + dec.length <= maxLen) return fs + ' ' + calc.eqSign(v, dec) + ' ' + dec
     // 分数串本身太长（极端大分子/分母）：硬塞必然被截断，退回纯小数行
@@ -654,7 +654,7 @@ function cplxStr(name, r, sign) {
   const fr = calc.toFraction(r.re)
   // 实部分数只认严格精确的（1.5.12）：近似分数不在复数行里冒充精确，退回纯小数行
   if (fr && fr.d !== 1 && calc.fracIsExact(r.re, fr)) {
-    const fs = fr.n + '/' + fr.d
+    const fs = dm(fr.n + '/' + fr.d)
     const build = function (re, im) { return name + ' ' + csg + ' ' + fs + ' ' + calc.eqSign(r.re, re) + ' ' + re + ' ' + sign + ' ' + im + 'i' }
     let line = build(hardFit(r.re, 8), hardFit(r.im, 7))
     if (line.length > 30) line = build(hardFit(r.re, 8), hardFit(r.im, 6))
@@ -703,8 +703,9 @@ function sqrtRat(D) {
 // 根的最简形态 (P ± Q√m)/R 文本（Q > 0、R > 0）：P == 0 不带括号、R == 1 不写分母、Q == 1 不写系数
 function radTerm(P, Q, m, R, sign) {
   const rad = Q === 1 ? '√' + m : Q + '√' + m
-  if (P === 0) return (sign < 0 ? '-' : '') + rad + (R > 1 ? '/' + R : '')
-  const inner = (P < 0 ? '-' + (-P) : '' + P) + (sign > 0 ? '+' : '-') + rad
+  // 负号统一用 −（1.5.15）：旧版根式串内部用 ASCII '-'，与同行小数部分的 − 混排
+  if (P === 0) return (sign < 0 ? '−' : '') + rad + (R > 1 ? '/' + R : '')
+  const inner = (P < 0 ? '−' + (-P) : '' + P) + (sign > 0 ? '+' : '−') + rad
   return R === 1 ? inner : '(' + inner + ')/' + R
 }
 // Δ > 0 且非完全平方时，把两根组装成 (P ± Q√m)/R 并约分到最简（分子分母同除 gcd、分母取正）；
@@ -765,7 +766,7 @@ function quadImRad(a, b, c, imVal) {
 function cplxRadStr(name, r, imRad, sign) {
   const fr = calc.toFraction(r.re)
   if (!fr) return null
-  const reStr = fr.d === 1 ? String(fr.n) : fr.n + '/' + fr.d
+  const reStr = dm(fr.d === 1 ? String(fr.n) : fr.n + '/' + fr.d)
   const line = name + ' = ' + reStr + ' ' + sign + ' ' + imRad + 'i'
   return line.length <= 30 ? line : null
 }
@@ -773,7 +774,7 @@ function cplxRadStr(name, r, imRad, sign) {
 // 看小数侧：主行分数 ≤12 字且小数串（11 字口径）≤11 字才直显，否则回落文字钮防同行溢出
 function fracChipText(fracOn, frac, v, mainIsFrac) {
   if (!frac) return '看分数'
-  const fs = frac.n + '/' + frac.d
+  const fs = dm(frac.n + '/' + frac.d)
   if (fracOn) {
     if (!mainIsFrac || fs.length > 12) return '看小数'
     const ds = fitResStr(v, 11)
@@ -958,6 +959,18 @@ function DP(x) {
 // 把纯文本结果放回算式时只换开头的负号：科学计数法的指数负号（如 1e-7）
 // 必须是 ASCII '-'，否则再求值会被当成 1×e−7 算错
 function dispNum(plain) { return String(plain).replace(/^-/, '−') }
+// 显示串负号统一成 −（1.5.15，与 calc.formatDisplay 同口径）：分数串是页面用原始
+// 数字拼的、不经 formatDisplay，单独过一遍；科学计数法指数里的负号保持 ASCII
+function dm(s) {
+  s = String(s)
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (ch === '-' && !(i > 0 && (s[i - 1] === 'e' || s[i - 1] === 'E'))) out += '−'
+    else out += ch
+  }
+  return out
+}
 function autoRange(type, V) {
   const T = [3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48, 64]
   const snap = function (x) { for (const t of T) if (x <= t) return t; return 80 }
@@ -1006,7 +1019,14 @@ function niceStep(span, target) {
   const s = n < 1.5 ? 1 : (n < 3.5 ? 2 : (n < 7 ? 5 : 10))
   return s * mag
 }
-function fmtTick(v) { return dispNum(calc.formatPlain(v)) }
+function fmtTick(v) {
+  const s = calc.formatPlain(v)
+  if (s.length <= 6) return dispNum(s)
+  // 大/小量级刻度改科学计数（1.5.15）：极端窗口下全位整数标签长达 21 字，塞进
+  // 24–26px 的刻度格必然重叠成一团看不清；2 位有效数字足够读尺度（步长本身是
+  // 整步）。用 toExponential 强制指数形——toPrecision 对 1e-5 量级会退回小数长串
+  return dispNum(v.toExponential(1).replace(/\.0e/, 'e'))
+}
 function TERM(coef, suffix, first) {
   if (coef === 0) return ''
   const a = Math.abs(coef)
@@ -1432,7 +1452,7 @@ export default {
       let mainIsFrac = false
       let fracExact = false
       if (this.fracOn && frac) {
-        s = frac.d === 1 ? String(frac.n) : frac.n + '/' + frac.d
+        s = dm(frac.d === 1 ? String(frac.n) : frac.n + '/' + frac.d)
         mainIsFrac = true
         // 分数与原值严格相等才配「=」；容差内近似认出的分数（如 1.0000000002÷3→1/3）
         // 用「≈」，不许冒充精确值（1.5.12，ChatGPT 第八份报告实证）
@@ -1910,6 +1930,15 @@ export default {
       return calc.evaluate(src, { deg: this.degMode })
     }
     const raw1 = this.eqExpr, raw2 = this.eqExpr2
+    // 方程/算式任一边以运算符结尾（悬空运算符）直接报错（1.5.15）：evalSide 会
+    // 宽容裁掉尾部运算符——主计算器无妨，但方程里「x+=3」会被当成 x=3 静默解掉
+    // 另一个问题（自查实证，2x+=7、x−=3 同病）。括号未闭合的宽容（自动补）保留，
+    // 中间的双运算符（x++2 的一元 +）是合法数学写法、不拦
+    const sideDangling = (raw) => raw.split('=').some((sg) => /[+\-−×÷^(]$/.test(sg.trim()))
+    if (((raw1 + raw2).indexOf('=') >= 0 || /[xy]/.test(raw1 + raw2)) && (sideDangling(raw1) || sideDangling(raw2))) {
+      this.eqLines = ['算式有问题，检查括号和符号']
+      return
+    }
     // ---- 二元一次方程组：任一式含 y ----
     if ((raw1 + raw2).indexOf('y') >= 0) {
       if (!raw1 || !raw2) { this.eqLines = ['含 y 的是方程组，要两个方程', '点下面的框，把第二个方程输完']; return }
@@ -2023,7 +2052,7 @@ export default {
             let ll = ansStr('左边', lv, 26), rl = ansStr('右边', rv, 26)
             // 两边收精度后的显示串若长得一模一样（如 1e16 与 10000000000000010 都被
             // 收成 1.000000000e+16），学生看不出差在哪：改用全位原文展示（1.5.13）
-            if (ll.slice(3) === rl.slice(3)) { ll = '左边 = ' + calc.formatPlain(lv); rl = '右边 = ' + calc.formatPlain(rv) }
+            if (ll.slice(3) === rl.slice(3)) { ll = '左边 = ' + dm(calc.formatPlain(lv)); rl = '右边 = ' + dm(calc.formatPlain(rv)) }
             this.eqLines = ['两边不相等', ll, rl]
           }
         } else {
@@ -2162,8 +2191,8 @@ export default {
     if ([n1, d1, n2, d2].some(isNaN)) { this.fLines = ['把分子分母都填完整']; return }
     const r = calc.fracCalc(n1, d1, this.fop, n2, d2)
     if (r.error) { this.fLines = [r.error]; return }
-    const lines = ['= ' + (r.d === 1 ? String(r.n) : r.n + '/' + r.d)]
-    if (r.mixed) lines.push('带分数：' + r.mixed.w + ' 又 ' + r.mixed.n + '/' + r.mixed.d)
+    const lines = ['= ' + dm(r.d === 1 ? String(r.n) : r.n + '/' + r.d)]
+    if (r.mixed) lines.push('带分数：' + dm(r.mixed.w + ' 又 ' + r.mixed.n + '/' + r.mixed.d))
     // 小数行连接号（1.5.14）：约分后的分母只含 2、5 因子时小数位数有限，且
     // 页面显示的 6 位有效数字与真值回读一致，才算精确小数用「=」；1/2+1/2
     // 旧版显示「小数 ≈ 1」，与全应用「精确用 =」的口径冲突（第十份报告观察项）

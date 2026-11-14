@@ -57,7 +57,7 @@ eq('abs(-5)', E('abs(−5)'), 5)
 approx('5^0.5', E('5^0.5'), Math.sqrt(5))
 eq('π 常量', calc.formatPlain(E('π')), '3.14159265359')
 eq('千分位', calc.formatDisplay(1234567.891), '1,234,567.891')
-eq('负数千分位', calc.formatDisplay(-1234.5), '-1,234.5')
+eq('负数千分位', calc.formatDisplay(-1234.5), '−1,234.5')
 
 // ---------- 分数/方程/换算/进制 ----------
 eq('toFraction(1/3)', JSON.stringify(calc.toFraction(1 / 3)), JSON.stringify({ n: 1, d: 3 }))
@@ -387,7 +387,7 @@ instEq.eqSolve(); ok('x²-5x+6=0 两根 3 与 2', instEq.eqLines.join(' ').index
 instEq.eqPad('C'); typeEq('(1+2)²'); instEq.eqSolve()
 ok('(1+2)² 纯算式算出 9', instEq.eqLines.join(' ').indexOf('= 9') >= 0)
 instEq.eqPad('C'); typeEq('(x+1)²=4'); instEq.eqSolve()
-ok('(x+1)²=4 解出 1 与 -3', instEq.eqLines.join(' ').indexOf('x1 = 1') >= 0 && instEq.eqLines.join(' ').indexOf('-3') >= 0)
+ok('(x+1)²=4 解出 1 与 -3', instEq.eqLines.join(' ').indexOf('x1 = 1') >= 0 && instEq.eqLines.join(' ').indexOf('−3') >= 0)
 instEq.eqPad('C'); typeEq('1/2x=1/4'.replace('1/4', '1/4')); instEq.eqSolve()
 ok('分数系数 (1/2)x=1/4 解出 0.5', instEq.eqLines.join(' ').indexOf('0.5') >= 0)
 instEq.eqPad('C'); typeEq('2x+'); instEq.eqPad('×'); eq('运算符连打替换', instEq.eqExpr, '2x×')

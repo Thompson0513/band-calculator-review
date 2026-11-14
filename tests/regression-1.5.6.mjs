@@ -124,12 +124,12 @@ eq('C 主计算 1/10^16 显示科学计数', calc.formatDisplay(calc.evaluate('1
 eq('C 主计算 1÷10^16 显示科学计数', calc.formatDisplay(calc.evaluate('1÷10^16')), '1e-16')
 eq('C 1e-15 不变', calc.formatDisplay(1e-15), '1e-15')
 eq('C 5e-16 是真值', calc.formatDisplay(5e-16), '5e-16')
-eq('C −2.5e-16 是真值', calc.formatDisplay(-2.5e-16), '-2.5e-16')
+eq('C −2.5e-16 是真值', calc.formatDisplay(-2.5e-16), '−2.5e-16')
 eq('C cleanNum 放行 1e-16', calc.cleanNum(1e-16), 1e-16)
 {
 const r = calc.solveQuad(1, 1e16, 1)
-eq('C 二次方程小根不再吞成 0', calc.formatDisplay(r.x1), '-1e-16')
-eq('C 二次方程小根 ansStr', F154.ansStr('x1', r.x1, 28), 'x1 = -1e-16')
+eq('C 二次方程小根不再吞成 0', calc.formatDisplay(r.x1), '−1e-16')
+eq('C 二次方程小根 ansStr', F154.ansStr('x1', r.x1, 28), 'x1 = −1e-16')
 }
 {
 const r = calc.solveSystem(1e16, 0, 1, 0, 1, 1)
@@ -186,9 +186,9 @@ const inst = makeInst()
 inst.qa = '0.3333333333'; inst.qb = '0'; inst.qc = '-3'; inst.quadSolve()
 eq('E 0.3333333333 被认作 1/3（既定容差口径）', JSON.stringify(calc.toFraction(0.3333333333)), JSON.stringify({ n: 1, d: 3}))
 eq('E Δ 完全平方走有理路径 x1 显示浮点根原值', inst.qLines[1], 'x1 = 3.00000000015')
-eq('E Δ 完全平方走有理路径 x2 显示浮点根原值', inst.qLines[2], 'x2 = -3.00000000015')
+eq('E Δ 完全平方走有理路径 x2 显示浮点根原值', inst.qLines[2], 'x2 = −3.00000000015')
 const r = calc.solveQuad(0.3333333333, 0, -2)
-eq('E 口径记录 c=−2 时给 √6（自检容差内）', JSON.stringify(F154.quadRadStrs(0.3333333333, 0, -2, r.x1, r.x2)), JSON.stringify({ x1: '√6', x2: '-√6'}))
+eq('E 口径记录 c=−2 时给 √6（自检容差内）', JSON.stringify(F154.quadRadStrs(0.3333333333, 0, -2, r.x1, r.x2)), JSON.stringify({ x1: '√6', x2: '−√6'}))
 }
 
 // ---------- F. 分数钮边界（核实记录，不属实） ----------
