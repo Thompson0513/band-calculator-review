@@ -408,40 +408,85 @@ function solveTriangle(k) {
   return { type: 'ok', solutions: good }
 }
 
+// 浮点缩放助手（2026-11-15 第二十轮复审修复引入）：frexp2 把正数拆成
+// f × 2^e（f ∈ [1, 2)）；scalbn2 把 2^e 分 256 一段逐段乘回去——一次
+// 乘 2^±2046 必先溢出 / 下溢成 0 或 Infinity，逐段乘时中间值不超过最
+// 终值（剩余指数同号），最终值可表示则全程可表示。供下面四个引擎在
+// 极端量级下恢复真值用，避免「中间量先溢出、真值明明存得下」的假溢出。
+function frexp2(x) {
+  let e = Math.floor(Math.log2(x))
+  let f = x / Math.pow(2, e)
+  if (f >= 2) { f /= 2; e += 1 }
+  else if (f < 1) { f *= 2; e -= 1 }
+  return [f, e]
+}
+function scalbn2(x, e) {
+  if (x === 0 || !isFinite(x)) return x
+  while (e > 0) { const s = Math.min(e, 256); x *= Math.pow(2, s); e -= s; if (!isFinite(x)) return x }
+  while (e < 0) { const s = Math.max(e, -256); x *= Math.pow(2, s); e -= s; if (x === 0) return x }
+  return x
+}
+
 // 数据统计（2026-11-15 新增，用户点名要方差）：平均数、总体方差 /
 // 标准差（分母 n，初中课内口径）、样本方差 / 标准差（分母 n−1，高中
-// 样本估计口径）。算法用「移位 + Welford 在线累加」：先减首项再累加，
-// 大数扎堆（如 100000001、100000002、100000003）时增量都是小量，不会
-// 像 Σx² 直算法那样灾难性相消；M2 或移位差非有限只在方差真值超双精
-// 度时发生（如 ±1e308 满量程数据、方差约 1e616 本就存不下），报溢出。
+// 样本估计口径）。平均数用「移位 + Welford」：先减首项再累加，大数
+// 扎堆（如 100000001、100000002、100000003）时增量都是小量，不相消；
+// 数据跨满量程（|x| > 9e307）时移位差 v−K 本身会溢出，改走半量程差
+// v/2−K/2（减半是精确的二进制缩放）再 Welford，最后还原。
+// 方差改两遍法（2026-11-15 第二十轮复审）：旧 Welford 的 M2 累加器
+// 会先于方差真值溢出——[1e154, −1e154, 0] 的 M2 = 2e308 已存不下，
+// 但总体方差 6.67e307、样本方差 1e308 都存得下，旧实现整页报错。
+// 现第二遍把 Σ(x−均值)² 按 (尾数, 指数) 缩放累加（每项用半差
+// h = x/2 − 均值/2 构造，h 恒有限、(2h)² 即该项），最后总体 / 样本
+// 各自 scalbn 还原、各自判溢出：哪个真超双精度哪个返回 Infinity，
+// 由页面单独标「太大」，不连坐其余统计量。
 function statsOf(xs) {
   if (!Array.isArray(xs) || xs.length === 0) return { error: '先加至少一个数据' }
   for (const v of xs) if (!isFinite(v)) return { error: '有数据不对' }
   const n = xs.length
+  let maxAbs = 0
+  for (const v of xs) maxAbs = Math.max(maxAbs, Math.abs(v))
   const K = xs[0]
-  let mean = 0, M2 = 0, cnt = 0
+  const half = maxAbs > 9e307
+  let mean = 0, cnt = 0
   for (const v of xs) {
-    const d = v - K
-    if (!isFinite(d)) return { error: '数字太大，超出精确计算范围' }
+    const d = half ? v / 2 - K / 2 : v - K
     cnt++
     const delta = d - mean
     mean += delta / cnt
-    M2 += delta * (d - mean)
-    if (!isFinite(M2)) return { error: '数字太大，超出精确计算范围' }
   }
-  if (M2 < 0) M2 = 0 // Welford 的 M2 数学上 ≥ 0，负值只可能是舍入尘
-  const meanV = K + mean
+  const meanV = half ? (K / 2 + mean) * 2 : K + mean
   if (!isFinite(meanV)) return { error: '数字太大，超出精确计算范围' }
-  const popVar = M2 / n
-  const sampVar = n >= 2 ? M2 / (n - 1) : null
+  let acc = 0, accE = 0 // Σ(x−meanV)² = acc × 2^accE，acc ∈ [1, 2)
+  for (const v of xs) {
+    const h = v / 2 - meanV / 2
+    if (h === 0) continue
+    const fr = frexp2(Math.abs(h)), f = fr[0], e = fr[1]
+    let tf = f * f, te = 2 * e + 2 // (2h)² = f² × 2^(2e+2)
+    if (tf >= 2) { tf /= 2; te += 1 }
+    if (acc === 0) { acc = tf; accE = te }
+    else if (te > accE) { acc = acc * Math.pow(2, accE - te) + tf; accE = te }
+    else { acc += tf * Math.pow(2, te - accE) }
+    if (acc >= 2) { acc /= 2; accE += 1 }
+  }
+  const popVar = acc === 0 ? 0 : scalbn2(acc / n, accE)
+  const sampVar = n >= 2 ? (acc === 0 ? 0 : scalbn2(acc / (n - 1), accE)) : null
   // 中位数 / 众数 / 极差（2026-11-15 统计补全，用户点名）：中位数偶数
-  // 个时取中间两数均值，用 a + (b−a)/2 防 (a+b) 溢出；众数按双精度精
+  // 个时取中间两数均值（同号 a + (b−a)/2、异号 a/2 + b/2，见下）；众数按双精度精
   // 确相等计数（输入多为课本小数），全都只出现一次时为 null（无众数）；
   // 极差 = 最大 − 最小，跨 ±1.7e308 时真值超双精度、原样返回 Infinity
   // 由页面单独标「太大」，不连坐其他统计量。
   const srt = xs.slice().sort(function (p, q) { return p - q })
   const mid = n >> 1
-  const median = n % 2 === 1 ? srt[mid] : srt[mid - 1] + (srt[mid] - srt[mid - 1]) / 2
+  // 偶数个的中位数：同号时 a + (b−a)/2 防 (a+b) 溢出；异号时 (b−a) 本
+  // 身会溢出（如 −1.7e308 与 1.7e308），改 a/2 + b/2（第二十轮复审同
+  // 类自查——旧移位溢出报错曾把这条挡在前面，移位修好后必须一起修）。
+  let median
+  if (n % 2 === 1) median = srt[mid]
+  else {
+    const ma = srt[mid - 1], mb = srt[mid]
+    median = (ma <= 0 && mb >= 0) ? ma / 2 + mb / 2 : ma + (mb - ma) / 2
+  }
   const freq = new Map()
   for (const v of xs) freq.set(v, (freq.get(v) || 0) + 1)
   let maxF = 0
@@ -476,6 +521,7 @@ function distOf(pairs) {
   if (Math.abs(sp - 1) > 1e-9) return { error: '概率之和要等于 1', psum: sp }
   let E = 0, comp = 0
   for (const pr of pairs) {
+    if (pr[1] === 0) continue // 零概率项对期望 / 方差都无贡献（第二十轮复审）
     const t = pr[0] * pr[1]
     if (!isFinite(t)) return { error: '数字太大，超出精确计算范围' }
     const y = t - comp
@@ -487,8 +533,14 @@ function distOf(pairs) {
   let D = 0
   comp = 0
   for (const pr of pairs) {
+    if (pr[1] === 0) continue
     const dv = pr[0] - E
-    const t = pr[1] * dv * dv
+    // |dv| 大时 dv 本身可能溢出成 Infinity（x 与 E 异号满量程），或
+    // dv² 先溢出而 p·dv² 真值存得下（p 为次正规量级）：改用半差
+    // h = x/2 − E/2（恒有限），t = 4·p·h² 即 p·dv²。
+    let t
+    if (isFinite(dv) && Math.abs(dv) <= 1e150) t = pr[1] * dv * dv
+    else { const h = pr[0] / 2 - E / 2; t = pr[1] * h * h * 4 }
     if (!isFinite(t)) return { error: '数字太大，超出精确计算范围' }
     const y = t - comp
     const s = D + y
@@ -501,48 +553,88 @@ function distOf(pairs) {
 }
 
 // 向量运算（2026-11-15 新增，用户点名）：a、b 为等长分量数组（2 或
-// 3）。数量积与模长都按最大分量归一化再算——分量 1e200 时直算平方
-// 必溢出，归一化后量级贴着真值；归一化数量积恰为 0 时点积就是 0
-// （抵消殆尽），别让 ∞·0 冒充 NaN。零向量没有夹角（angle 为 null）。
+// 3）。普通量级直算（课本数据保持精确，如 (1,2,3)·(4,5,6) 恰 32）；
+// 任一向量分量超 1e150 时改按各自最大分量独立归一化再恢复——第二十
+// 轮复审实测：旧版两向量共用一个最大值 M，[1e200,1e200] 与
+// [1e-200,1e-200] 混算时小向量归一化下溢成 0，被误判零向量（点积
+// 2 算成 0、夹角变 null）。独立缩放后点积的恢复乘积 MA·MB 可能先
+// 溢出，按 sn·(MA·MB) → (sn·MA)·MB → (sn·MB)·MA 顺序取第一个有限
+// 结果；归一化点积恰为 0 时点积就是 0，别让 ∞·0 冒充 NaN。夹角由
+// 独立归一化量算并钳位 cos；cos 距 ±1 不足 1e-12 时按平行 / 反向
+// 处理（acos 在端点附近的舍入尘会把平行报成 0.0000012°，而真值小
+// 于约 8e-5° 的夹角本就低于双精度分量可分辨的下限）。零向量没有
+// 夹角（angle 为 null）。
 function vecOf(a, b) {
   for (const v of a.concat(b)) if (!isFinite(v)) return { error: '有分量不对' }
   const dim = a.length
-  let M = 0
-  for (const v of a.concat(b)) M = Math.max(M, Math.abs(v))
+  let MA = 0, MB = 0
+  for (const v of a) MA = Math.max(MA, Math.abs(v))
+  for (const v of b) MB = Math.max(MB, Math.abs(v))
   const sum = [], diff = []
   for (let i = 0; i < dim; i++) { sum.push(a[i] + b[i]); diff.push(a[i] - b[i]) }
-  if (M === 0) return { type: 'ok', dot: 0, magA: 0, magB: 0, sum: sum, diff: diff, angle: null }
-  const an = a.map(function (v) { return v / M }), bn = b.map(function (v) { return v / M })
+  if (MA === 0 || MB === 0) {
+    return { type: 'ok', dot: 0, magA: MA === 0 ? 0 : vecMag(a, MA), magB: MB === 0 ? 0 : vecMag(b, MB), sum: sum, diff: diff, angle: null }
+  }
+  const an = a.map(function (v) { return v / MA }), bn = b.map(function (v) { return v / MB })
   let sn = 0, sa = 0, sb = 0
   for (let i = 0; i < dim; i++) { sn += an[i] * bn[i]; sa += an[i] * an[i]; sb += bn[i] * bn[i] }
-  const dot = sn === 0 ? 0 : M * (M * sn)
-  const magA = M * Math.sqrt(sa), magB = M * Math.sqrt(sb)
-  let angle = null
-  if (magA > 0 && magB > 0) {
-    let cs = sn / (Math.sqrt(sa) * Math.sqrt(sb))
-    if (cs > 1) cs = 1
-    if (cs < -1) cs = -1
-    angle = Math.acos(cs) * 180 / Math.PI
+  let dot
+  if (sn === 0) dot = 0
+  else if (MA <= 1e150 && MB <= 1e150) {
+    dot = 0
+    for (let i = 0; i < dim; i++) dot += a[i] * b[i]
+  } else {
+    const p = MA * MB
+    if (isFinite(p)) dot = sn * p
+    else { const r1 = (sn * MA) * MB; dot = isFinite(r1) ? r1 : (sn * MB) * MA }
   }
-  return { type: 'ok', dot: dot, magA: magA, magB: magB, sum: sum, diff: diff, angle: angle }
+  let cs = sn / (Math.sqrt(sa) * Math.sqrt(sb))
+  if (cs > 1) cs = 1
+  if (cs < -1) cs = -1
+  const angle = cs >= 1 - 1e-12 ? 0 : (cs <= -1 + 1e-12 ? 180 : Math.acos(cs) * 180 / Math.PI)
+  return { type: 'ok', dot: dot, magA: vecMag(a, MA), magB: vecMag(b, MB), sum: sum, diff: diff, angle: angle }
+}
+function vecMag(v, M) {
+  // 直算平方和只在 1e-150 ≤ M ≤ 1e150 时安全：再大平方溢出、再小平方下溢成 0。
+  if (M >= 1e-150 && M <= 1e150) { let s = 0; for (const x of v) s += x * x; return Math.sqrt(s) }
+  let s = 0
+  for (const x of v) { const q = x / M; s += q * q }
+  return M * Math.sqrt(s)
 }
 
 // 复数四则与模（2026-11-15 新增，用户点名）：z1 = [a, b]、z2 = [c, d]
-// （实部、虚部）。除法用按分母最大分量缩放的稳定式（Smith 口径），
-// 避免 c²+d² 在分量 1e200 时先溢出；除数为 0 时 div 为 null。模长同
-// 样按最大分量归一化。
+// （实部、虚部）。乘 / 除先把两个复数按各自最大分量独立缩放（分量落
+// 到 [0, 1]），Smith 式在缩放域里算，最后用 scalbn2 把尺度比还原：
+// 第二十轮复审实测旧 Smith 式在 z1 = z2 = 1e308+1e308i 时 den =
+// c + d·r = 2e308 先溢出、商变 NaN（真值 1）；同类自查发现乘法也有
+// 相消 NaN——(1e200+1e200i)² 的实部 a·c − b·d 两项都溢出成
+// Infinity、相减变 NaN（真值 0）。缩放域里乘积 ≤ 1、den ∈ [1, 2]，
+// 两病同治；尺度悬殊的乘法（如 1e308 × 1e-300）靠独立缩放 + 指数
+// 还原也不会被大分量吞掉小分量。除数为 0 时 div 为 null。模长同样
+// 按最大分量归一化。
 function cplxOps(z1, z2) {
   const a = z1[0], b = z1[1], c = z2[0], d = z2[1]
   if (![a, b, c, d].every(isFinite)) return { error: '有数不对' }
-  let div = null
-  if (c !== 0 || d !== 0) {
-    if (Math.abs(c) >= Math.abs(d)) {
-      const r = d / c, den = c + d * r
-      div = [(a + b * r) / den, (b - a * r) / den]
+  const S1 = Math.max(Math.abs(a), Math.abs(b)), S2 = Math.max(Math.abs(c), Math.abs(d))
+  let mul = [0, 0], div = null
+  if (S1 !== 0 && S2 !== 0) {
+    const f1 = frexp2(S1), f2 = frexp2(S2)
+    const a1 = a / S1, b1 = b / S1, c1 = c / S2, d1 = d / S2
+    const mr = a1 * c1 - b1 * d1, mi = a1 * d1 + b1 * c1
+    const mf = f1[0] * f2[0], me = f1[1] + f2[1]
+    mul = [scalbn2(mr * mf, me), scalbn2(mi * mf, me)]
+    let qr, qi
+    if (Math.abs(c1) >= Math.abs(d1)) {
+      const r = d1 / c1, den = c1 + d1 * r
+      qr = (a1 + b1 * r) / den; qi = (b1 - a1 * r) / den
     } else {
-      const r = c / d, den = c * r + d
-      div = [(a * r + b) / den, (b * r - a) / den]
+      const r = c1 / d1, den = c1 * r + d1
+      qr = (a1 * r + b1) / den; qi = (b1 * r - a1) / den
     }
+    const df = f1[0] / f2[0], de = f1[1] - f2[1]
+    div = [scalbn2(qr * df, de), scalbn2(qi * df, de)]
+  } else if (S2 !== 0) {
+    div = [0, 0] // z1 是 0、z2 非 0
   }
   const mag = function (x, y) {
     const m = Math.max(Math.abs(x), Math.abs(y))
@@ -553,7 +645,7 @@ function cplxOps(z1, z2) {
   return {
     type: 'ok',
     add: [a + c, b + d], sub: [a - c, b - d],
-    mul: [a * c - b * d, a * d + b * c], div: div,
+    mul: mul, div: div,
     mag1: mag(a, b), mag2: mag(c, d)
   }
 }
@@ -562,8 +654,13 @@ function cplxOps(z1, z2) {
 // 锥曲线联立后的一元二次 ax² + bx + c = 0（a ≠ 0），x1、x2 为交点横
 // 坐标。判别式按最大系数归一化判符号；|x1−x2| = √Δ/|a| 用归一化量
 // 直接算（√dn/|an|，两边同除缩放因子约掉），不先还原 Δ 再开方；弦
-// 长 = √(1+k²)·|x1−x2|，√(1+k²) 用稳定式防 k² 溢出。Δ 本身可能溢
-// 出成 Infinity（系数 1e200 量级），原样返回由页面单独处理。
+// 长 = √(1+k²)·|x1−x2|，√(1+k²) 用稳定式防 k² 溢出。Δ 的还原走
+// scalbn2（dn 先乘缩放因子的尾数平方、指数逐段还原）：旧式 sc·sc·dn
+// 先算 sc²，系数 1e200 时 sc² = Infinity，重根 dn = 0 会得
+// Infinity·0 = NaN（第二十轮复审实测，页面误标「Δ 太大」）；dn 非
+// 零但极小时 sc² 也会把可表示的 Δ（如 1e160 系数、dn = 4e-13 时的
+// 4e307）误报 Infinity。新式下 Δ 真超双精度才返回 Infinity，原样
+// 返回由页面单独处理。
 function vietaOf(a, b, c, k) {
   if (![a, b, c, k].every(isFinite)) return { error: '有数不对' }
   if (a === 0) return { error: 'a 不能是 0（不是二次方程）' }
@@ -577,8 +674,9 @@ function vietaOf(a, b, c, k) {
     const hyp = ak >= 1 ? ak * Math.sqrt(1 + (1 / ak) * (1 / ak)) : Math.sqrt(1 + ak * ak)
     chord = hyp * diffAbs
   }
+  const fs = frexp2(sc)
   return {
-    type: 'ok', disc: sc * sc * dn, discNeg: dn < 0,
+    type: 'ok', disc: scalbn2(dn * fs[0] * fs[0], 2 * fs[1]), discNeg: dn < 0,
     sum: -b / a, prod: c / a, diffAbs: diffAbs, chord: chord
   }
 }

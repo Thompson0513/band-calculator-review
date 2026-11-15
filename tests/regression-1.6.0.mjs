@@ -47,7 +47,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z/21z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z/21z/22z 断言按 SKIP 处理 */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -1253,7 +1253,11 @@ ok('20 statsOf(单个) mean=7、popVar=0、样本为 null', st5.type === 'ok' &&
 eq('20 statsOf(空) 报错', calc2.statsOf([]).error, '先加至少一个数据')
 const st7 = calc2.statsOf([-1.5, 2.5])
 ok('20 statsOf(-1.5,2.5) mean=0.5、popVar=4、sampVar=8', st7.type === 'ok' && st7.mean === 0.5 && st7.popVar === 4 && st7.popSd === 2 && st7.sampVar === 8, JSON.stringify(st7))
-eq('20 statsOf(±1e308) 方差真溢出报错', calc2.statsOf([1e308, -1e308]).error, '数字太大，超出精确计算范围')
+// 2026-11-15 第二十轮翻转并披露：原断言要求 ±1e308 时整页报「数字太
+// 大」；方差改缩放累加后，均值 / 中位数照常出、只有真溢出的方差字段
+// 返回 Infinity 由页面单独标「太大」（不连坐，同极差口径），见 §22e。
+const st8 = calc2.statsOf([1e308, -1e308])
+ok('20 statsOf(±1e308) 不再整页报错：mean=0、方差 Infinity', st8.type === 'ok' && st8.mean === 0 && st8.popVar === Infinity && st8.sampVar === Infinity, JSON.stringify(st8))
 const st9 = calc2.statsOf([0.1, 0.2, 0.3])
 ok('20 statsOf(0.1,0.2,0.3) mean≈0.2、popVar≈1/150', st9.type === 'ok' && Math.abs(st9.mean - 0.2) < 1e-16 && Math.abs(st9.popVar - 1 / 150) / (1 / 150) < 1e-9, JSON.stringify(st9))
 eq('20 statsOf(含 NaN) 报错', calc2.statsOf([1, NaN]).error, '有数据不对')
@@ -1301,6 +1305,44 @@ ok('21 vietaOf k=0 弦长 = |x1−x2| = 1', Math.abs(w21d.chord - 1) < 1e-12, JS
 ok('21 页面接线：四引擎与菜单齐全', t2src.indexOf('distOf') >= 0 && t2src.indexOf('vecOf') >= 0 && t2src.indexOf('cplxOps') >= 0 && t2src.indexOf('vietaOf') >= 0 && t2src.indexOf('分布列') >= 0 && t2src.indexOf('向量运算') >= 0 && t2src.indexOf('复数运算') >= 0 && t2src.indexOf('韦达 · 弦长') >= 0)
 if (buglog === null) console.log('SKIP 21z BUGLOG 含四工具条目（[审查仓适配] BUGLOG.md 不在公开仓）')
 else ok('21z BUGLOG 含四工具条目', buglog.indexOf('分布列期望方差') >= 0 && buglog.indexOf('向量运算') >= 0 && buglog.indexOf('复数运算') >= 0 && buglog.indexOf('韦达定理与弦长') >= 0)
+
+// ===== §22 第二十轮外部复审（五项新功能边界，2026-11-15）＋同类自查 =====
+// 复审五项逐项实跑全部属实；另自查同类两处：复数乘法相消 NaN、
+// 中位数异号 (b−a) 溢出（被移位溢出挡住、修移位后才可达，一并修）。
+const v22a = calc2.vecOf([1e200, 1e200], [1e-200, 1e-200])
+ok('22a vecOf 混合量级：点积 2、|b|=√2e-200、夹角 0', v22a.dot === 2 && Math.abs(v22a.magB - Math.SQRT2 * 1e-200) / (Math.SQRT2 * 1e-200) < 1e-12 && v22a.angle === 0, JSON.stringify(v22a))
+const v22b = calc2.vecOf([1e200, 1e200, 1e200], [1e-200, 1e-200, 1e-200])
+ok('22a vecOf 3D 混合量级：点积 3、夹角 0', v22b.dot === 3 && v22b.angle === 0, JSON.stringify(v22b))
+ok('22a vecOf 平行 / 反向夹角恰 0 / 180（无舍入尘）', calc2.vecOf([2, 2], [1, 1]).angle === 0 && calc2.vecOf([1, 0], [-1, 0]).angle === 180)
+const v22d = calc2.vecOf([3e-200, 4e-200], [1, 0])
+ok('22a vecOf 微量级模长不下溢：|a|=5e-200', Math.abs(v22d.magA - 5e-200) / 5e-200 < 1e-12, JSON.stringify(v22d))
+const c22a = calc2.cplxOps([1e308, 1e308], [1e308, 1e308])
+ok('22b cplx 极大除法 = [1, 0]（旧 Smith den 溢出变 NaN）', c22a.div[0] === 1 && c22a.div[1] === 0, JSON.stringify(c22a.div))
+const c22b = calc2.cplxOps([1e200, 1e200], [1e200, 1e200])
+ok('22b cplx 乘法相消：实部恰 0、虚部真溢出 Infinity（旧为 NaN）', c22b.mul[0] === 0 && c22b.mul[1] === Infinity, JSON.stringify(c22b.mul))
+const c22c = calc2.cplxOps([1e308, 0], [1e-300, 0])
+ok('22b cplx 尺度悬殊乘法不被吞：1e308×1e-300=1e8', Math.abs(c22c.mul[0] - 1e8) / 1e8 < 1e-12 && c22c.mul[1] === 0, JSON.stringify(c22c.mul))
+const c22d = calc2.cplxOps([1, 0], [1e308, 0])
+ok('22b cplx 大除小：商 1e-308', Math.abs(c22d.div[0] - 1e-308) / 1e-308 < 1e-9 && c22d.div[1] === 0, JSON.stringify(c22d.div))
+const w22a = calc2.vietaOf(1e200, -2e200, 1e200, 0)
+ok('22c vieta 重根 Δ 恰 0（旧 sc²·dn = ∞·0 = NaN）', w22a.disc === 0 && w22a.sum === 2 && w22a.prod === 1 && w22a.diffAbs === 0 && w22a.chord === 0, JSON.stringify(w22a))
+const w22b = calc2.vietaOf(1e160, 2e160, 1e160 * (1 - 1e-13), 0)
+ok('22c vieta 中量级极小 dn：Δ≈4e307 有限（旧 sc² 先溢出误报 Infinity）', isFinite(w22b.disc) && Math.abs(w22b.disc - 4e307) / 4e307 < 0.01, JSON.stringify(w22b))
+const d22a = calc2.distOf([[-1e308, 1], [1e308, 0]])
+ok('22d distOf 零概率极端值不连坐：E=−1e308、D=0', d22a.type === 'ok' && d22a.E === -1e308 && d22a.D === 0 && d22a.sd === 0, JSON.stringify(d22a))
+const d22b = calc2.distOf([[5, 0], [1, 0.5], [2, 0.5]])
+ok('22d distOf 零概率普通组：E=1.5、D=0.25', d22b.type === 'ok' && d22b.E === 1.5 && d22b.D === 0.25, JSON.stringify(d22b))
+const d22c = calc2.distOf([[-1e308, 1], [1e308, 5e-324]])
+ok('22d distOf 次正规概率极端偏离：D≈1.9763e293（dv 溢出走半差缩放）', d22c.type === 'ok' && d22c.E === -1e308 && Math.abs(d22c.D - 1.9762625833649863e293) / 1.9762625833649863e293 < 1e-9, JSON.stringify(d22c))
+const s22a = calc2.statsOf([1e154, -1e154, 0])
+ok('22e statsOf M2 中间溢出：总体方差 6.67e307、样本方差 1e308 都可表示', s22a.type === 'ok' && s22a.mean === 0 && s22a.median === 0 && Math.abs(s22a.popVar - 6.666666666666666e307) / 6.666666666666666e307 < 1e-12 && Math.abs(s22a.sampVar - 1e308) / 1e308 < 1e-12 && Math.abs(s22a.popSd - 8.16496580927726e153) / 8.16496580927726e153 < 1e-12, JSON.stringify(s22a))
+const s22b = calc2.statsOf([1.7e308, -1.7e308])
+ok('22e statsOf 满量程：mean / median 照常、方差与极差 Infinity 不连坐', s22b.type === 'ok' && s22b.mean === 0 && s22b.median === 0 && s22b.popVar === Infinity && s22b.range === Infinity, JSON.stringify(s22b))
+const s22c = calc2.statsOf([1.3e154, -1.3e154])
+ok('22e statsOf 样本方差单独溢出：总体 1.69e308 有限、样本 Infinity', isFinite(s22c.popVar) && Math.abs(s22c.popVar - 1.69e308) / 1.69e308 < 1e-9 && s22c.sampVar === Infinity, JSON.stringify(s22c))
+ok('22e statsOf 中位数异号小数组：(−5, 5) 中位数 0', calc2.statsOf([-5, 5]).median === 0)
+if (buglog === null) console.log('SKIP 22z BUGLOG 含第二十轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+else ok('22z BUGLOG 含第二十轮条目', buglog.indexOf('第二十轮') >= 0)
 
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)
 if (fail) process.exit(1)

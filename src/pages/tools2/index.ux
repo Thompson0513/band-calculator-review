@@ -988,16 +988,21 @@ export default {
     if (isFinite(r.range)) lines.push(line('极差', fmtVal(r.range)))
     else lines.push('极差 太大（数据跨度超范围）')
     this.stLines = lines
+    // 方差 / 标准差各自判溢出（2026-11-15 第二十轮）：引擎已改缩放累
+    // 加，哪个真超双精度哪个单独标「太大」，不连坐其余统计量（同极差）。
+    const vline = function (label, val) {
+      return isFinite(val) ? line(label, fmtVal(val)) : label + ' 太大（超出范围）'
+    }
     const vl = [
-      line('总体方差', fmtVal(r.popVar)),
-      line('总体标准差', fmtVal(r.popSd))
+      vline('总体方差', r.popVar),
+      vline('总体标准差', r.popSd)
     ]
     if (r.sampVar === null) {
       vl.push('样本方差 要 2 个以上数据')
       vl.push('样本标准差 要 2 个以上数据')
     } else {
-      vl.push(line('样本方差', fmtVal(r.sampVar)))
-      vl.push(line('样本标准差', fmtVal(r.sampSd)))
+      vl.push(vline('样本方差', r.sampVar))
+      vl.push(vline('样本标准差', r.sampSd))
     }
     this.stSampLines = vl
   },
