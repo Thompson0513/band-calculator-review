@@ -47,7 +47,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z 断言按 SKIP 处理 */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -518,7 +518,10 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   eq('12f 3/4/5 面积仍 6', calc.triArea(3, 4, 5).area, 6)
   // B7：超大边 SSS 不再返回 NaN 解
   eq('12g 1e200 等边报错', calc2.solveTriangle({ a: 1e200, b: 1e200, c: 1e200 }).error, '数字太大，超出精确计算范围')
-  eq('12g 1e150 等边给 60°', calc2.solveTriangle({ a: 1e150, b: 1e150, c: 1e150 }).solutions[0].A, 60.00000000000001)
+  // 【1.6.0 第十七轮复审修订】原断言钉死旧半角形的具体双精度值
+  // 60.00000000000001；fromSSS 改稳定差形后同角为 60.00000000000002
+  // （差 1 ulp），改按容差断言——钉的是「等边给 60°」不是舍入位。
+  ok('12g 1e150 等边给 60°', Math.abs(calc2.solveTriangle({ a: 1e150, b: 1e150, c: 1e150 }).solutions[0].A - 60) < 1e-9)
   // B8：负底分数指数取实根
   eq('12h (-8)^(1/3) = −2', EV('(-8)^(1/3)'), -2)
   eq('12h (-27)^(1/3) = −3', EV('(-27)^(1/3)'), -3)
@@ -1053,6 +1056,45 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   ok('16e 第二页 CSS 含 key-c5w 122px 且 4 处键盘绑 kcls', ux2.indexOf('.key-c5w { width: 122px; }') >= 0 && (ux2.match(/kcls \? \$item\.kcls/g) || []).length >= 4)
   if (buglog === null) console.log('SKIP 16z BUGLOG 含扩键条目（[审查仓适配] BUGLOG.md 不在公开仓）')
   else ok('16z BUGLOG 含扩键条目', buglog.indexOf('扩键') >= 0)
+}
+
+
+// ===== §17 第十七轮外部复审（ChatGPT，2026-11-15） =====
+// 复审确认第十六轮修复与扩键全部独立通过；新发现 SSS 极小边误判退化：
+// (1,1,1e-16) 数学上非退化，却因浮点 1+1e-16===1 与 sidesDegenerateExact
+// 的安全整数上限被判「退化」。修法：判定改十进制 BigInt 精确比较
+// （sidesSumCmp，无位数上限）；fromSSS 的 hs−n[i] 改稳定差形（先大边减、
+// 再加小边）＋根号分开乘——极小角不再全算成 0，针形三角形一路算到
+// 1e-308。连带披露：(0.30000000000000004, 0.1, 0.2) 按十进制语义是
+// 0.3 < 0.30000000000000004，判「不能构成三角形」（旧浮点口径判退化）。
+{
+  const T = function (a, b, c) { return calc2.solveTriangle({ a: a, b: b, c: c, A: null, B: null, C: null }) }
+  for (const e of [1e-14, 1e-15, 1e-16]) {
+    const r = T(1, 1, e)
+    ok('17a (1,1,' + e + ') 非退化被接受', !!r.solutions)
+    if (r.solutions) {
+      const s0 = r.solutions[0]
+      ok('17a (1,1,' + e + ') 两底角 ≈90°、小角 ≈ ε·180/π、角和 180', Math.abs(s0.A - 90) < 1e-6 && Math.abs(s0.C - e * 57.29577951308232) / (e * 57.29577951308232) < 1e-6 && Math.abs(s0.A + s0.B + s0.C - 180) < 1e-9)
+      ok('17a (1,1,' + e + ') 面积 ≈ ε/2', Math.abs(s0.area - e / 2) / (e / 2) < 1e-6)
+    }
+  }
+  for (const e of [1e-100, 1e-300]) {
+    const r = T(1, 1, e)
+    ok('17b (1,1,' + e + ') 深针形仍可算（A=90）', !!r.solutions && Math.abs(r.solutions[0].A - 90) < 1e-9)
+  }
+  eq('17c (1,1,2) 真退化仍拒绝', T(1, 1, 2).error, '三边退化成一条直线')
+  eq('17c (1,2,3) 真退化仍拒绝', T(1, 2, 3).error, '三边退化成一条直线')
+  eq('17c (0.1,0.2,0.3) 十进制退化仍拒绝', T(0.1, 0.2, 0.3).error, '三边退化成一条直线')
+  eq('17c (1,1,0) 零边拒绝', T(1, 1, 0).error, '边长要大于 0')
+  eq('17c (2,3,10) 不等式拒绝', T(2, 3, 10).error, '三边不能构成三角形')
+  eq('17d (0.30000000000000004,0.1,0.2) 十进制语义判不能构成', T(0.30000000000000004, 0.1, 0.2).error, '三边不能构成三角形')
+  ok('17d (5,5,9.999999999999998) 近退化但有效', !!T(5, 5, 9.999999999999998).solutions)
+  const s345 = T(3, 4, 5).solutions[0]
+  ok('17e (3,4,5) 角度面积不变', Math.abs(s345.A - 36.86989764584402) < 1e-12 && Math.abs(s345.C - 90) < 1e-12 && s345.area === 6)
+  const s789 = T(7, 8, 9).solutions[0]
+  ok('17e (7,8,9) 面积不变', Math.abs(s789.area - 26.832815729997478) < 1e-12)
+  if (buglog === null) console.log('SKIP 17z BUGLOG 含第十七轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+  else ok('17z BUGLOG 含第十七轮条目', buglog.indexOf('第十七轮') >= 0)
 }
 
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)

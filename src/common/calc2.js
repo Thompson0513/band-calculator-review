@@ -158,10 +158,22 @@ function solveTriangle(k) {
     const sc = Math.max(s[0], s[1], s[2])
     const n = [s[0] / sc, s[1] / sc, s[2] / sc]
     const hs = (n[0] + n[1] + n[2]) / 2
+    // 2026-11-15 第十七轮复审：hs − n[i] 改稳定差形 ((大边 − n[i]) + 小边)/2
+    // （另两边里先拿大的减 n[i]、再加小的）。直算时 hs 先把三边求和，极小
+    // 边被圆整吞掉——(1,1,1e-16) 的 hs 圆成 1，三个角全算成 0；若先拿极小
+    // 边减大边（如 1e-100 − 1）残差同样被吞。近邻相减精确（Sterbenz）：
+    // (1,1,1e-16) 的角算回 (90°, 90°, ≈5.7e-15°)，面积也随之正确。
+    const d = [0, 1, 2].map(function (i) {
+      const j = (i + 1) % 3, m = (i + 2) % 3
+      const hi = Math.max(n[j], n[m]), lo = Math.min(n[j], n[m])
+      return Math.max(0, ((hi - n[i]) + lo) / 2)
+    })
     const g = [0, 1, 2].map(function (i) {
       const j = (i + 1) % 3, m = (i + 2) % 3
-      const num = Math.sqrt(Math.max(0, (hs - n[j]) * (hs - n[m])))
-      const den = Math.sqrt(Math.max(0, hs * (hs - n[i])))
+      // 根号分开乘：d[j]·d[m] 在极小边时先下溢成 0（(5e-301)² 量级），
+      // 分开开方再乘可把可算范围推到双精度下限附近。
+      const num = Math.sqrt(d[j]) * Math.sqrt(d[m])
+      const den = Math.sqrt(Math.max(0, hs)) * Math.sqrt(d[i])
       return 2 * rad2deg(Math.atan2(num, den))
     })
     return finish(s, g)
@@ -186,6 +198,33 @@ function solveTriangle(k) {
     const srt = scaled.slice().sort(function (p, q) { return q - p })
     return srt[1] + srt[2] === srt[0]
   }
+  // 三边和精确比较（2026-11-15 第十七轮复审）：(次大 + 最小) 与最大边比
+  // 大小，按十进制串用 BigInt 精确缩放，无 15 位/安全整数上限。浮点相等
+  // 会把 (1,1,1e-16) 误判退化（1 + 1e-16 在双精度里圆成 1），旧
+  // sidesDegenerateExact 在缩放 1e16 超安全整数时也会放弃。返回 -1/0/1；
+  // 无 BigInt 或解析失败返回 null，调用方退回旧浮点口径（含上面的函数）。
+  function sidesSumCmp(s) {
+    if (typeof BigInt !== 'function') return null
+    let k = 0
+    const parts = []
+    for (let i = 0; i < 3; i++) {
+      const m = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(s[i]))
+      if (!m) return null
+      let digs = (m[2] + (m[3] || '')).replace(/^0+/, '')
+      let kk = (m[3] || '').length - (m[4] ? parseInt(m[4], 10) : 0)
+      if (digs === '') return null
+      if (kk < 0) { digs = digs + '0'.repeat(-kk); kk = 0 }
+      if (kk > k) k = kk
+      parts.push({ d: digs, kk: kk, neg: m[1] === '-' })
+    }
+    const scaled = parts.map(function (o) {
+      const v = BigInt(o.d) * BigInt('1' + '0'.repeat(k - o.kk))
+      return o.neg ? -v : v
+    })
+    scaled.sort(function (p, q) { return p > q ? -1 : (p < q ? 1 : 0) })
+    const sum = scaled[1] + scaled[2]
+    return sum > scaled[0] ? 1 : (sum < scaled[0] ? -1 : 0)
+  }
   function verify(sol) {
     for (let i = 0; i < 3; i++) {
       const sv = [sol.a, sol.b, sol.c][i], gv = [sol.A, sol.B, sol.C][i]
@@ -198,8 +237,16 @@ function solveTriangle(k) {
   if (nS === 3) {
     const s = [S[0], S[1], S[2]]
     const srt = s.slice().sort(function (p, q) { return q - p })
-    if (srt[1] + srt[2] < srt[0]) return { error: '三边不能构成三角形' }
-    if (srt[1] + srt[2] === srt[0] || sidesDegenerateExact(s)) return { error: '三边退化成一条直线' }
+    // 判定优先走十进制精确比较（sidesSumCmp）；拿不到（无 BigInt 等）
+    // 才退回浮点比较 + sidesDegenerateExact 的旧口径。
+    const cmp = sidesSumCmp(s)
+    if (cmp !== null) {
+      if (cmp < 0) return { error: '三边不能构成三角形' }
+      if (cmp === 0) return { error: '三边退化成一条直线' }
+    } else {
+      if (srt[1] + srt[2] < srt[0]) return { error: '三边不能构成三角形' }
+      if (srt[1] + srt[2] === srt[0] || sidesDegenerateExact(s)) return { error: '三边退化成一条直线' }
+    }
     sols = [fromSSS(s)]
   } else if (nS === 2 && nG >= 1) {
     const miss = [0, 1, 2].filter(function (i) { return S[i] == null })[0]
