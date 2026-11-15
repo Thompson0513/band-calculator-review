@@ -37,8 +37,14 @@ function solveRightTri(k) {
   else if (x != null && z != null && y == null) { if (!(z > x)) return { error: '斜边 c 要比直角边长' }; y = z * Math.sqrt(((z - x) / z) * ((z + x) / z)) }
   else if (y != null && z != null && x == null) { if (!(z > y)) return { error: '斜边 c 要比直角边长' }; x = z * Math.sqrt(((z - y) / z) * ((z + y) / z)) }
   if (x != null && y != null && z != null) {
-    const xn = x / z, yn = y / z
-    if (Math.abs(xn * xn + yn * yn - 1) > 1e-6) return { error: '三边不符合勾股定理' }
+    // z 为 Infinity 是「两直角边太大、斜边真值超限」算出来的（第二
+    // 十三轮自查）：此时 xn = yn = 0、勾股校验必然误报「不符合勾股
+    // 定理」，还连坐了本可算出的两角。z 有限才做勾股校验；角由
+    // atan2(x, y) 直接给、与 z 无关，照常校验 / 补出。
+    if (isFinite(z)) {
+      const xn = x / z, yn = y / z
+      if (Math.abs(xn * xn + yn * yn - 1) > 1e-6) return { error: '三边不符合勾股定理' }
+    }
     const AfromSides = rad2deg(Math.atan2(x, y))
     if (A != null && Math.abs(AfromSides - A) > 0.01) return { error: '填的量对不上' }
     if (A == null) { A = AfromSides; B = 90 - A }
@@ -49,7 +55,8 @@ function solveRightTri(k) {
     else if (y != null) { z = y / cA; x = y * Math.tan(deg2rad(A)) }
   }
   if (x == null || y == null || z == null || A == null || B == null) return { error: '再多填一个量就能解' }
-  if (!isFinite(x) || !isFinite(y) || !isFinite(z)) return { error: '数字太大，超出精确计算范围' }
+  // 边溢出成 Infinity 不再整体报错（第二十三轮自查，同 BUG-03 口
+  // 径）：原样返回，页面把超限的那条边单独标「太大」，角度照常给。
   return { type: 'ok', a: x, b: y, c: z, A: A, B: B }
 }
 
@@ -80,7 +87,7 @@ function permComb(n, r) {
     for (let i = 1; i <= rr; i++) bc = bc * BigInt(n - rr + i) / BigInt(i)
     cExact = bc <= BigInt(9007199254740991)
     C = Number(bc)
-    if (!isFinite(C)) return { error: '数字太大，超出精确计算范围' }
+    if (!isFinite(C)) cExact = false // C 单独溢出不连坐 A（第二十三轮自查，同 A 溢出不连坐 C 的口径）
   } else {
     const gcdI = function (p, q) { while (q) { const t = p % q; p = q; q = t } return p }
     let cc = 1
@@ -90,7 +97,7 @@ function permComb(n, r) {
       const g2 = gcdI(cc, den); cc /= g2; den /= g2
       cc *= num
       if (den !== 1) { cc /= den; cExact = false }
-      if (!isFinite(cc)) return { error: '数字太大，超出精确计算范围' }
+      if (!isFinite(cc)) { cExact = false; break } // 同 BigInt 分支：C 溢出不连坐 A
       if (cc > 9007199254740991) cExact = false
     }
     C = cc
@@ -103,6 +110,9 @@ function permComb(n, r) {
 // 数列：kind = 'ap'（x 为公差）| 'gp'（x 为公比），求第 n 项与前 n 项和。
 function seqSolve(kind, a1, x, n) {
   if (!Number.isInteger(n) || n < 1) return { error: '项数 n 要是正整数' }
+  // 首项 0 的等比数列全是 0（第二十三轮自查）：旧版 an = 0 × q^(n−1)
+  // 在 q^(n−1) 溢出时拼出 NaN（0 × Infinity），再被旧的整体报错吞掉。
+  if (kind === 'gp' && a1 === 0) return { type: 'ok', an: 0, Sn: 0 }
   let an, Sn
   if (kind === 'ap') {
     // 2026-11-15 第十九轮复审：(n−1)·x 本身可能先溢出——a1 = −1.5e308、
@@ -145,6 +155,11 @@ function seqSolve(kind, a1, x, n) {
     else if (x > 0.5 || x < -1) {
       const sumPowA = function (q, nn, a) {
         if (nn === 1) return a
+        // a 已溢出只可能发生在 |q| > 1：整段和由末项 a·q^(nn−1) 主
+        // 导、符号随它、量级必超限，直接给 ±Infinity——别让两个
+        // ±Infinity 在递归里相加拼出 NaN（第二十三轮自查：q =
+        // −1e200、n = 4 旧版拼 NaN 后被整体报错吞掉）。
+        if (!isFinite(a)) { const flip = q < 0 && (nn - 1) % 2 === 1; return (a > 0) !== flip ? Infinity : -Infinity }
         if (nn % 2 === 0) { const h = sumPowA(q, nn / 2, a); return h + sumPowA(q, nn / 2, a * Math.pow(q, nn / 2)) }
         return sumPowA(q, nn - 1, a) + a * Math.pow(q, nn - 1)
       }
@@ -152,7 +167,13 @@ function seqSolve(kind, a1, x, n) {
     }
     else Sn = a1 * (Math.pow(x, n) - 1) / (x - 1)
   }
-  if (!isFinite(an) || !isFinite(Sn)) return { error: '数字太大，超出精确计算范围' }
+  // an / Sn 各自返回（第二十三轮复审 BUG-03）：旧版任一溢出就整体
+  // 报错——seqSolve('gp', 1e308, 1, 3) 的 an = 1e308 明明有限也被吞
+  // 掉，页面的逐行显示根本执行不到。页面已按行判溢出（哪个太大标
+  // 哪个）。Sn 万一仍被 Inf 相消拼成 NaN，符号由末项 an 定（|q| > 1
+  // 时 Sn ≈ an·q/(q−1)、q/(q−1) 恒为正）；an 理论上不会是 NaN。
+  if (isNaN(Sn)) Sn = an > 0 ? Infinity : (an < 0 ? -Infinity : Infinity)
+  if (isNaN(an)) an = 0
   return { type: 'ok', an: an, Sn: Sn }
 }
 
@@ -449,8 +470,20 @@ function expSumFE(terms) {
   }
   if (!items.length) return [0, 0]
   if (typeof BigInt !== 'function') {
+    // 无 BigInt 兜底（第二十三轮复审风险项强化）：先按指数分桶合并
+    // （同指数项在双精度里相加、误差只留在本桶内），再按指数从大到
+    // 小折进累加器——大项先互相抵消、小项最后才并入，不会被先到的
+    // 大数逐个吞掉（旧单一累加器：[1, 200 个 2^-60] 的小量全舍）。
+    // 目标手环的 QuickJS 带 BigInt（构造调用在真机上一直在跑），此
+    // 分支只作保险，§25 有专门隐藏 BigInt 的回归盯着它。
+    const buckets = new Map()
+    for (const t of items) {
+      const bk = buckets.get(t[1])
+      if (bk === undefined) buckets.set(t[1], [t[0], t[1]])
+      else bk[0] += t[0]
+    }
     const st = [0, 0]
-    const sorted = items.slice().sort(function (p, q) { return q[1] - p[1] })
+    const sorted = Array.from(buckets.values()).sort(function (p, q) { return q[1] - p[1] })
     for (const t of sorted) {
       if (st[0] === 0) { st[0] = t[0]; st[1] = t[1] }
       else if (t[1] > st[1]) { st[0] = st[0] * Math.pow(2, st[1] - t[1]) + t[0]; st[1] = t[1] }
@@ -484,6 +517,25 @@ function expSumFE(terms) {
   }
   const f = Number(top) / 4503599627370496
   return [neg ? -f : f, emin + shift]
+}
+// 精确乘积项（第二十三轮复审 BUG-02）：x × y 的精确值拆成 hi + lo
+// 两项（Dekker 两积、纯双精度运算、不依赖 FMA）一起送进精确求和——
+// 只把已舍入的乘积送进 BigInt 累加器，近抵消时乘法误差会翻转结果
+// 符号：韦达 Δ 的 b² 与 4ac 先各舍入成同一个双精度数、Δ 被算成 0
+// （真值 9.17e131、两实根误判重根）。mul 为小整数倍率（如 −4）：
+// |mul| ≤ 4 时乘进 hi/lo 不引入新舍入（hi 仍是双精度、lo 同步缩放）。
+function expPushProd(terms, x, y, mul) {
+  if (x === 0 || y === 0) return
+  const fx = frexp2(Math.abs(x)), fy = frexp2(Math.abs(y))
+  const a = fx[0], b = fy[0], e = fx[1] + fy[1]
+  const p = a * b
+  const SP = 134217729 // 2^27 + 1
+  const ca = SP * a, aHi = ca - (ca - a), aLo = a - aHi
+  const cb = SP * b, bHi = cb - (cb - b), bLo = b - bHi
+  const lo = ((aHi * bHi - p) + aHi * bLo + aLo * bHi) + aLo * bLo
+  const s = ((x < 0) !== (y < 0) ? -1 : 1) * (mul === undefined ? 1 : mul)
+  expPush(terms, s * p, e)
+  if (lo !== 0) expPush(terms, s * lo, e)
 }
 function expSumVal(terms) {
   const fe = expSumFE(terms)
@@ -605,8 +657,7 @@ function distOf(pairs) {
   const termsE = []
   for (const pr of pairs) {
     if (pr[1] === 0 || pr[0] === 0) continue // 零概率项无贡献（第二十轮复审）
-    const fx = frexp2(Math.abs(pr[0])), fp = frexp2(pr[1])
-    expPush(termsE, (pr[0] < 0 ? -1 : 1) * fx[0] * fp[0], fx[1] + fp[1])
+    expPushProd(termsE, pr[0], pr[1], 1) // 精确乘积（第二十三轮：与点积 / Δ 同口径）
   }
   const E = expSumVal(termsE)
   let D = 0
@@ -657,35 +708,15 @@ function vecOf(a, b) {
     return { type: 'ok', dot: 0, magA: MA === 0 ? 0 : vecMag(a, MA), magB: MB === 0 ? 0 : vecMag(b, MB), sum: sum, diff: diff, angle: null }
   }
   const an = a.map(function (v) { return v / MA }), bn = b.map(function (v) { return v / MB })
-  let sn = 0, sa = 0, sb = 0
-  for (let i = 0; i < dim; i++) { sn += an[i] * bn[i]; sa += an[i] * an[i]; sb += bn[i] * bn[i] }
-  // 单个向量内部尺度悬殊时（分量比 > 1e290），小分量除以最大值会下
-  // 溢成 0 或掉进次正规精度区——点积改逐项 (尾数, 指数) 累加（第
-  // 二十一轮复审：[1e308, 1e-308]·[1e-308, 1e308] 应为 2，统一归
-  // 一化算成 0）。模长不受此影响（小分量对模长的贡献低于精度）。
-  let lost = false
-  for (let i = 0; i < dim; i++) {
-    if ((a[i] !== 0 && (an[i] === 0 || Math.abs(an[i]) < 1e-290)) ||
-        (b[i] !== 0 && (bn[i] === 0 || Math.abs(bn[i]) < 1e-290))) lost = true
-  }
-  let dot
-  if (MA <= 1e150 && MB <= 1e150) {
-    dot = 0
-    for (let i = 0; i < dim; i++) dot += a[i] * b[i]
-  } else if (lost) {
-    const termsD = []
-    for (let i = 0; i < dim; i++) {
-      if (a[i] === 0 || b[i] === 0) continue
-      const fa = frexp2(Math.abs(a[i])), fb = frexp2(Math.abs(b[i]))
-      expPush(termsD, fa[0] * fb[0] * ((a[i] < 0) !== (b[i] < 0) ? -1 : 1), fa[1] + fb[1])
-    }
-    dot = expSumVal(termsD)
-  } else if (sn === 0) dot = 0
-  else {
-    const p = MA * MB
-    if (isFinite(p)) dot = sn * p
-    else { const r1 = (sn * MA) * MB; dot = isFinite(r1) ? r1 : (sn * MB) * MA }
-  }
+  let sn = 0
+  for (let i = 0; i < dim; i++) sn += an[i] * bn[i]
+  // 点积全程走精确乘积 + 精确求和（第二十三轮复审 BUG-01/02）：旧
+  // 版普通量级走双精度顺序直加，1 + 1e200 − 1e200 把 1 吞成 0；极
+  // 端量级分支的逐项乘积先舍入再求和也保不住近抵消。归一化 sn 只
+  // 留给下面的夹角用；模长不受小分量下溢影响（贡献低于精度）。
+  const termsD = []
+  for (let i = 0; i < dim; i++) expPushProd(termsD, a[i], b[i], 1)
+  const dot = expSumVal(termsD)
   // 夹角改 atan2(|a×b|, a·b)（第二十一轮复审）：acos 在端点附近分辨
   // 率只有约 1e-8 rad，上一轮用「cos 距 ±1 不足 1e-12 就归零」止尘，
   // 反而误杀了 5.7e-5° 这类真实可分辨的小角度；atan2 两端都稳定，
@@ -743,7 +774,7 @@ function cplxOps(z1, z2) {
       qr = (a1 * r + b1) / den; qi = (b1 * r - a1) / den
     }
     const df = f1[0] / f2[0], de = f1[1] - f2[1]
-    const divS = [scalbn2(qr * df, de), scalbn2(qi * df, de)]
+    const divS = [scalbn2(qr * df, de), scalbn2(qi * df, de)] // 缩放域兜底（分子 (尾数, 指数) 路径异常时用）
     // 主路径（第二十一轮复审）：四项乘积各走 prodT 缩放——单个复数
     // 内部相差极大的分量（1e308 与 1e-308）在缩放域里除以最大值会
     // 先下溢丢失，逐项算才保得住（[1e308,1e-308]×[1,0] 的虚部、
@@ -754,13 +785,20 @@ function cplxOps(z1, z2) {
       (isFinite(t1) && isFinite(t2)) ? t1 - t2 : mulS[0],
       (isFinite(t3) && isFinite(t4)) ? t3 + t4 : mulS[1]
     ]
-    // 除法同理：分子 = z1·conj(z2) 逐项算，分母 |z2|² 用缩放域的
-    // (c1² + d1²)·f2² × 2^(2e2) 表示、最后 scalbn 还原。
-    const u1 = t1, u2 = t2, u3 = t4, u4 = t3 // ac、bd、bc、ad
-    const numRe = u1 + u2, numIm = u3 - u4
-    if (isFinite(u1) && isFinite(u2) && isFinite(u3) && isFinite(u4) && isFinite(numRe) && isFinite(numIm)) {
+    // 除法（第二十三轮自查修正）：分子 = z1·conj(z2) 必须全程留在
+    // (尾数, 指数) 域——旧版分子先落回双精度，除数是次正规量级时分
+    // 子乘积（如 (1e-320)²）直接下溢成 0，[1e-320,0] / [1e-320,0]
+    // 被算成 [0, 0]（真值 [1, 0]），[3,4] / [1e-320,0] 拼出 NaN。
+    // 改：分子两项走精确乘积 + 精确求和拿到 (f, e)，分母 |z2|² 用
+    // (c1² + d1²)·f2[0]²（∈ [1, 8)）表示、指数 −2·e2 最后 scalbn
+    // 一并还原；缩放域 divS 只作异常兜底。
+    const termsRe = [], termsIm = []
+    expPushProd(termsRe, a, c, 1); expPushProd(termsRe, b, d, 1)
+    expPushProd(termsIm, b, c, 1); expPushProd(termsIm, a, d, -1)
+    const nRe = expSumFE(termsRe), nIm = expSumFE(termsIm)
+    if (isFinite(nRe[0]) && isFinite(nIm[0])) {
       const denF = (c1 * c1 + d1 * d1) * f2[0] * f2[0]
-      div = [scalbn2(numRe / denF, -2 * f2[1]), scalbn2(numIm / denF, -2 * f2[1])]
+      div = [scalbn2(nRe[0] / denF, nRe[1] - 2 * f2[1]), scalbn2(nIm[0] / denF, nIm[1] - 2 * f2[1])]
     } else {
       div = divS
     }
@@ -796,12 +834,13 @@ function vietaOf(a, b, c, k) {
   // vietaOf(1e308, 0, 1e-308) 真 Δ = −4、无实根，却被算成 Δ = 0 误
   // 判重根（符号都错）。逐项缩放累加后 Δ 的正负与量级都保得住；
   // |x1−x2| = √Δ/|a| 也从 (尾数, 指数) 直接开方再除 |a| 的尾数。
+  // 两项乘积都走 expPushProd 精确乘积（第二十三轮复审 BUG-02）：旧
+  // 版 fb[0]² 与 4·fa[0]·fc[0] 先各舍入成双精度再进精确求和，近重
+  // 根时两值可能恰好相等、非零 Δ 被算成 0（实测真值 9.17e131 的一
+  // 组系数被误判重根）——精确求和救不了乘法阶段丢掉的信息。
   const termsV = []
-  if (b !== 0) { const fb = frexp2(Math.abs(b)); expPush(termsV, fb[0] * fb[0], 2 * fb[1]) }
-  if (c !== 0) {
-    const fa = frexp2(Math.abs(a)), fc = frexp2(Math.abs(c))
-    expPush(termsV, -4 * fa[0] * fc[0] * ((a < 0) !== (c < 0) ? -1 : 1), fa[1] + fc[1])
-  }
+  if (b !== 0) expPushProd(termsV, b, b, 1)
+  if (c !== 0) expPushProd(termsV, a, c, -4)
   const fe = expSumFE(termsV)
   let diffAbs = null, chord = null
   if (fe[0] > 0) {

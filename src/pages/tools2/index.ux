@@ -801,7 +801,12 @@ export default {
     if (r.error) { this.rtLines = [r.error]; return }
     const lines = []
     for (const s of ['a', 'b', 'c']) {
-      if (k[s] === null) { const f = fmtSide(r[s]); lines.push(s + ' ' + (f.exact ? '= ' : '≈ ') + f.t) }
+      if (k[s] === null) {
+        // 引擎已改：边溢出原样返回 Infinity（不再整体报错），这里把
+        // 超限的边单独标「太大」，其余边与角度照常（第二十三轮）。
+        if (!isFinite(r[s])) { lines.push(s + ' 太大了，超出范围'); continue }
+        const f = fmtSide(r[s]); lines.push(s + ' ' + (f.exact ? '= ' : '≈ ') + f.t)
+      }
     }
     const ang = []
     if (k.A === null) ang.push('A ' + angSeg(r.A))
@@ -1134,8 +1139,14 @@ export default {
       return label + ' ' + (f.exact ? '= ' : '≈ ') + f.t
     }
     const vecT = function (label, arr) {
-      for (const x of arr) if (!isFinite(x)) return label + ' 太大了，超出范围'
-      return line(label, fmtVecE(arr))
+      // 逐分量判溢出（第二十三轮复审 BUG-04）：旧版任一分量溢出就整
+      // 行隐藏——sum = [Inf, 0] 里有效的 0 也看不见。改：有限分量照
+      // 常显示、只有溢出的分量标「太大」。
+      let hasBad = false
+      for (const x of arr) if (!isFinite(x)) hasBad = true
+      if (!hasBad) return line(label, fmtVecE(arr))
+      const parts = arr.map(function (x) { return isFinite(x) ? fmtPartE(x).t : '太大' })
+      return label + ' = (' + parts.join(', ') + ')'
     }
     const lines = [
       isFinite(r.dot) ? line('a·b', fmtVal(r.dot)) : 'a·b 太大了，超出范围',
@@ -1180,8 +1191,15 @@ export default {
     if (r.error) { this.cxLines = [r.error]; return }
     const line = function (label, f) { return label + ' ' + (f.exact ? '= ' : '≈ ') + f.t }
     const cl = function (label, pair) {
-      if (!isFinite(pair[0]) || !isFinite(pair[1])) return label + ' 太大了，超出范围'
-      return line(label, fmtCplxE(pair[0], pair[1]))
+      // 逐分量判溢出（第二十三轮自查，同 BUG-04 口径）：旧版实部 /
+      // 虚部任一溢出整对隐藏——乘积 [2, -Inf] 里有限的 2 也看不见。
+      // 改：有限分量照常显示、只有溢出的分量标「太大」。
+      if (isFinite(pair[0]) && isFinite(pair[1])) return line(label, fmtCplxE(pair[0], pair[1]))
+      const reS = isFinite(pair[0]) ? fmtPartE(pair[0]).t : '太大'
+      let imS = ''
+      if (isFinite(pair[1])) { if (pair[1] !== 0) imS = (pair[1] < 0 ? '−' : '+') + fmtPartE(Math.abs(pair[1])).t + 'i' }
+      else imS = (pair[1] < 0 ? '−' : '+') + '太大i'
+      return label + ' = ' + reS + imS
     }
     const m1 = isFinite(r.mag1) ? fmtShortE(r.mag1) : null
     const m2 = isFinite(r.mag2) ? fmtShortE(r.mag2) : null

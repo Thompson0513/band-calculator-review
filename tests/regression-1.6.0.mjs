@@ -47,7 +47,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z/21z/22z/23z/24z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z/21z/22z/23z/24z/25z 断言按 SKIP 处理 */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -558,7 +558,7 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   // ok（C = 1、aOf = true），旧「整单报错」断言就地翻转（详见 §15b）。
   ok('12k A(200,200) A 溢出不连坐 C=1', calc2.permComb(200, 200).type === 'ok' && calc2.permComb(200, 200).C === 1 && calc2.permComb(200, 200).aOf === true)
   eq('12k A(170,170) 正常', calc2.permComb(170, 170).type, 'ok')
-  eq('12k 等比 400 项溢出报错', calc2.seqSolve('gp', 1, 10, 400).error, '数字太大，超出精确计算范围')
+  ok('12k 等比 400 项真溢出改逐行返回（§25 契约：不再整体报错）', calc2.seqSolve('gp', 1, 10, 400).type === 'ok' && calc2.seqSolve('gp', 1, 10, 400).an === Infinity && calc2.seqSolve('gp', 1, 10, 400).Sn === Infinity)
   eq('12k A(5,2)=20/C(5,2)=10 不变', JSON.stringify([calc2.permComb(5, 2).A, calc2.permComb(5, 2).C]), JSON.stringify([20, 10]))
   // B12：引擎层不支持隐含乘法是已知限制，不改——全部用户输入路径都自动补 ×
   // （主键盘 appendTok、方程键盘 eqin、系数 coeffSrc），无用户可达路径。
@@ -1164,8 +1164,8 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   ok('18c GP(-1e-300,-10,310) 负公比 an ≈1e9、Sn ≈9.090909091e8', gpN.type === 'ok' && Math.abs(gpN.an - 1e9) / 1e9 < 1e-6 && Math.abs(gpN.Sn - 9.090909091e8) / 9.090909091e8 < 1e-6, JSON.stringify(gpN))
   const gpU = calc2.seqSolve('gp', 1e300, 1e-300, 3)
   ok('18c GP(1e300,1e-300,3) pow 下溢兜底 an ≈1e-300', gpU.type === 'ok' && Math.abs(gpU.an - 1e-300) / 1e-300 < 1e-6, JSON.stringify(gpU))
-  ok('18c GP(1e300,10,310) 真溢出仍报错', !!calc2.seqSolve('gp', 1e300, 10, 310).error)
-  ok('18c AP(1e308,1e308,2) 真溢出仍报错', !!calc2.seqSolve('ap', 1e308, 1e308, 2).error)
+  ok('18c GP(1e300,10,310) 真溢出改逐行返回（§25 契约）', calc2.seqSolve('gp', 1e300, 10, 310).type === 'ok' && calc2.seqSolve('gp', 1e300, 10, 310).an === Infinity && calc2.seqSolve('gp', 1e300, 10, 310).Sn === Infinity)
+  ok('18c AP(1e308,1e308,2) 真溢出改逐行返回（§25 契约）', calc2.seqSolve('ap', 1e308, 1e308, 2).type === 'ok' && calc2.seqSolve('ap', 1e308, 1e308, 2).an === Infinity && calc2.seqSolve('ap', 1e308, 1e308, 2).Sn === Infinity)
   eq('18c GP(1,2,10) 和仍精确 1023', calc2.seqSolve('gp', 1, 2, 10).Sn, 1023)
   eq('18c AP(1,1,100) 和仍精确 5050', calc2.seqSolve('ap', 1, 1, 100).Sn, 5050)
   // 18d 极小角显示
@@ -1217,7 +1217,7 @@ const apO = calc2.seqSolve('ap', -1.5e308, 1e308, 3)
 ok('19a AP(-1.5e308,1e308,3) an ≈5e307、Sn ≈-1.5e308', apO.type === 'ok' && Math.abs(apO.an - 5e307) / 5e307 < 1e-12 && Math.abs(apO.Sn - -1.5e308) / 1.5e308 < 1e-12, JSON.stringify(apO))
 const apO2 = calc2.seqSolve('ap', 1e308, -1e308, 3)
 ok('19a AP(1e308,-1e308,3) an = -1e308、Sn = 0', apO2.type === 'ok' && apO2.an === -1e308 && apO2.Sn === 0, JSON.stringify(apO2))
-ok('19a AP(1.5e308,1e308,3) 真溢出仍报错', !!calc2.seqSolve('ap', 1.5e308, 1e308, 3).error)
+ok('19a AP(1.5e308,1e308,3) 真溢出改逐行返回（§25 契约）', calc2.seqSolve('ap', 1.5e308, 1e308, 3).type === 'ok' && calc2.seqSolve('ap', 1.5e308, 1e308, 3).an === Infinity && calc2.seqSolve('ap', 1.5e308, 1e308, 3).Sn === Infinity)
 eq('19a AP(1,1,100) an/Sn 仍精确', JSON.stringify(calc2.seqSolve('ap', 1, 1, 100)), JSON.stringify({ type: 'ok', an: 100, Sn: 5050 }))
 
 // 19b 面积中间溢出（自查同类：finish 乘回 sc²）
@@ -1406,6 +1406,52 @@ ok('24c 向量页逐行判溢出：bad gate 已除、点积行有「太大」分
 ok('24c 数列 / 排列组合页逐行判溢出', ux2.indexOf('项太大了') >= 0 && ux2.indexOf('cBig') >= 0)
 if (buglog === null) console.log('SKIP 24z BUGLOG 含第二十二轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
 else ok('24z BUGLOG 含第二十二轮条目', buglog.indexOf('第二十二轮') >= 0)
+
+// ===== §25 第二十三轮复审（ChatGPT 报 4 项 + 自查 3 项）=====
+// 25a 点积普通量级路径（BUG-01）：旧版 MA,MB ≤ 1e150 走双精度直加、
+// 大数抵消吞小量；改全程精确乘积 + 精确求和后所有量级、所有排列同值。
+eq('25a vecOf 普通量级点积抵消保 1', calc2.vecOf([1, 1e100, 1e100], [1, 1e100, -1e100]).dot, 1)
+eq('25a vecOf 普通量级换序仍 1', calc2.vecOf([1e100, 1e100, 1], [1e100, -1e100, 1]).dot, 1)
+eq('25a vecOf 极端量级仍 1', calc2.vecOf([1, 1e308, 1e308], [1, 1e308, -1e308]).dot, 1)
+eq('25a vecOf 教材值不变', calc2.vecOf([1, 2, 3], [4, 5, 6]).dot, 32)
+ok('25a vecOf 小数点积正确舍入（精确值 0.11000000000000001）', calc2.vecOf([0.1, 0.2], [0.3, 0.4]).dot === 0.11000000000000001, String(calc2.vecOf([0.1, 0.2], [0.3, 0.4]).dot))
+// 25b 韦达 Δ 精确乘积（BUG-02）：b² 与 4ac 先舍入会把真 Δ = 9.17e131
+// 算成 0 误判重根；Dekker 两积 + 精确求和后与精确有理数计算逐位一致。
+const w25 = calc2.vietaOf(1.3690040441523358e23, 9.54250347729416e73, 1.6628762530528816e124, 0)
+ok('25b vieta 近重根 Δ 逐位正确、非重根', w25.disc === 9.173262235320083e131 && w25.discNeg === false && w25.diffAbs > 0, JSON.stringify(w25))
+eq('25b vieta 普通重根 Δ 仍恰为 0', calc2.vietaOf(1, -2, 1, 0).disc, 0)
+// 25c 数列逐行贯通（BUG-03）：引擎不再整体报错，an / Sn 各自返回。
+const sq25 = calc2.seqSolve('gp', 1e308, 1, 3)
+ok('25c seqSolve an 有限、Sn 单独溢出', sq25.type === 'ok' && sq25.an === 1e308 && sq25.Sn === Infinity, JSON.stringify(sq25))
+// 25d 向量页逐分量（BUG-04）：整行隐藏的旧串已除、逐分量「太大」在位。
+ok('25d 向量页逐分量标太大', ux2.indexOf("return label + ' 太大了，超出范围'") < 0 && ux2.indexOf(": '太大'") >= 0 && ux2.indexOf('太大i') >= 0)
+// 25e 自查：复数除法分子全程 (尾数, 指数) 域——次正规除数不再把商算成 0 / NaN。
+eq('25e cplx 次正规自除 = [1, 0]', JSON.stringify(calc2.cplxOps([1e-320, 0], [1e-320, 0]).div), JSON.stringify([1, 0]))
+ok('25e cplx 大商双 Inf 不再 NaN', calc2.cplxOps([3, 4], [1e-320, 0]).div[0] === Infinity && calc2.cplxOps([3, 4], [1e-320, 0]).div[1] === Infinity)
+eq('25e cplx §21 除法不回退', JSON.stringify(calc2.cplxOps([1e308, 1e-308], [1, -1]).div), JSON.stringify([5e307, 5e307]))
+// 25f 自查：等比首项 0 不再 NaN、负公比 Inf 相消不再 NaN、直角三角形
+// 斜边溢出不再误报勾股不符且角度照常、排列组合 C 溢出不连坐。
+eq('25f seqSolve gp 首项 0', JSON.stringify(calc2.seqSolve('gp', 0, 1e308, 3)), JSON.stringify({ type: 'ok', an: 0, Sn: 0 }))
+ok('25f seqSolve gp 负公比 n=4 Sn = -Inf（非 NaN）', calc2.seqSolve('gp', 1, -1e200, 4).Sn === -Infinity && calc2.seqSolve('gp', 1, -1e200, 4).an === -Infinity)
+ok('25f seqSolve gp 负公比 n=3 Sn = +Inf', calc2.seqSolve('gp', 1, -1e200, 3).Sn === Infinity)
+const rt25 = calc2.solveRightTri({ a: 1.5e308, b: 1.5e308, c: null, A: null, B: null })
+ok('25f solveRightTri 斜边溢出：ok、c = Inf、两角 45', rt25.type === 'ok' && rt25.c === Infinity && Math.abs(rt25.A - 45) < 1e-9 && Math.abs(rt25.B - 45) < 1e-9, JSON.stringify(rt25))
+eq('25f solveRightTri 真不符仍报勾股', calc2.solveRightTri({ a: 3, b: 4, c: 6, A: null, B: null }).error, '三边不符合勾股定理')
+ok('25f permComb C 溢出不连坐（引擎层）', calc2.permComb(2000, 1000).type === 'ok' && calc2.permComb(2000, 1000).C === Infinity)
+// 25g 无 BigInt 兜底（风险-05）：隐藏 BigInt 后分桶折叠路径与精确路
+// 径同值——ChatGPT 的 [1, 200 个 2^-60] 平均数与点积抵消两例。
+const meanBig = calc2.statsOf([1].concat(Array(200).fill(Math.pow(2, -60)))).mean
+const savedBigInt = globalThis.BigInt
+globalThis.BigInt = undefined
+let meanNoBig, dotNoBig
+try {
+  meanNoBig = calc2.statsOf([1].concat(Array(200).fill(Math.pow(2, -60)))).mean
+  dotNoBig = calc2.vecOf([1, 1e100, 1e100], [1, 1e100, -1e100]).dot
+} finally { globalThis.BigInt = savedBigInt }
+ok('25g 无 BigInt 兜底平均数与精确路径一致', meanNoBig === meanBig, String(meanNoBig) + ' vs ' + String(meanBig))
+eq('25g 无 BigInt 兜底点积抵消仍 1', dotNoBig, 1)
+if (buglog === null) console.log('SKIP 25z BUGLOG 含第二十三轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+else ok('25z BUGLOG 含第二十三轮条目', buglog.indexOf('第二十三轮') >= 0)
 
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)
 if (fail) process.exit(1)
