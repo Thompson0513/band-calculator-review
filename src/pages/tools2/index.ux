@@ -1049,10 +1049,12 @@ export default {
       return
     }
     const line = function (label, f) { return label + ' ' + (f.exact ? '= ' : '≈ ') + f.t }
+    // 方差 / 标准差真溢出时单独标「太大」、期望照常显示（2026-11-15
+    // 第二十一轮，引擎已改不连坐契约，同统计页口径）。
     this.dtLines = [
       line('期望 E(X)', fmtVal(r.E)),
-      line('方差 D(X)', fmtVal(r.D)),
-      line('标准差', fmtVal(r.sd)),
+      isFinite(r.D) ? line('方差 D(X)', fmtVal(r.D)) : '方差 D(X) 太大（超出范围）',
+      isFinite(r.sd) ? line('标准差', fmtVal(r.sd)) : '标准差 太大（超出范围）',
       '共 ' + n + ' 组，概率和 = 1 ✓'
     ]
   },

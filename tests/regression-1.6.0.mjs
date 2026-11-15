@@ -47,7 +47,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z/21z/22z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z/21z/22z/23z 断言按 SKIP 处理 */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -1343,6 +1343,40 @@ ok('22e statsOf 样本方差单独溢出：总体 1.69e308 有限、样本 Infin
 ok('22e statsOf 中位数异号小数组：(−5, 5) 中位数 0', calc2.statsOf([-5, 5]).median === 0)
 if (buglog === null) console.log('SKIP 22z BUGLOG 含第二十轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
 else ok('22z BUGLOG 含第二十轮条目', buglog.indexOf('第二十轮') >= 0)
+
+// ===== §23 第二十一轮外部复审（对象内部尺度与缩放助手端点，2026-11-15） =====
+// 复审 8 项逐项实跑全部属实；修法统一为逐项 (尾数, 指数) 缩放
+// （expAdd 累加器 + prodT 单项乘积），整体缩放只留兜底。
+const MAXV = Number.MAX_VALUE
+const m23a = calc2.cplxOps([MAXV, 0], [1, 0])
+ok('23a cplx MAX×1 乘法 = [MAX, 0]（frexp2 端点修复）', m23a.mul[0] === MAXV && m23a.mul[1] === 0, JSON.stringify(m23a.mul))
+const m23b = calc2.cplxOps([MAXV, 0], [MAXV, 0])
+ok('23a cplx MAX÷MAX = [1, 0]', m23b.div[0] === 1 && m23b.div[1] === 0, JSON.stringify(m23b.div))
+const w23a = calc2.vietaOf(MAXV, MAXV, 0, 0)
+ok('23a vieta MAX 系数 Δ 真溢出 Infinity、根差恰 1', w23a.disc === Infinity && w23a.diffAbs === 1, JSON.stringify(w23a))
+const v23a = calc2.vecOf([1e308, 1e-308], [1e-308, 1e308])
+ok('23b vecOf 向量内部尺度悬殊：点积 ≈ 2、夹角 90', Math.abs(v23a.dot - 2) / 2 < 1e-12 && v23a.angle === 90, JSON.stringify(v23a))
+const v23b = calc2.vecOf([1e308, 1e-308, 0], [1e-308, 1e308, 0])
+ok('23b vecOf 3D 内部尺度悬殊：点积 ≈ 2', Math.abs(v23b.dot - 2) / 2 < 1e-12, JSON.stringify(v23b))
+const v23c = calc2.vecOf([1, 0], [1, 1e-6])
+const v23d = calc2.vecOf([1, 0], [-1, 1e-6])
+ok('23b vecOf 真实小夹角不归零：≈5.7296e-5° 与 ≈179.99994°', Math.abs(v23c.angle - 5.729577951308232e-5) / 5.729577951308232e-5 < 1e-9 && Math.abs(v23d.angle - 179.9999427042205) < 1e-9, v23c.angle + '/' + v23d.angle)
+const c23a = calc2.cplxOps([1e308, 1e-308], [1, 0])
+ok('23c cplx 内部小分量不丢：×[1,0] 与 ÷[1,0] 都保住 1e-308 虚部', c23a.mul[0] === 1e308 && c23a.mul[1] === 1e-308 && c23a.div[0] === 1e308 && c23a.div[1] === 1e-308, JSON.stringify(c23a))
+const c23b = calc2.cplxOps([1e308, 1e-308], [1e-308, -1e308])
+ok('23c cplx 交叉项：实部 ≈ 2、虚部真溢出 -Infinity', Math.abs(c23b.mul[0] - 2) / 2 < 1e-12 && c23b.mul[1] === -Infinity, JSON.stringify(c23b.mul))
+const w23b = calc2.vietaOf(1e308, 0, -1e-308, 0)
+ok('23d vieta 小系数不消失：Δ ≈ 4、根差 ≈ 2e-308', Math.abs(w23b.disc - 4) / 4 < 1e-12 && Math.abs(w23b.diffAbs - 2e-308) / 2e-308 < 1e-9, JSON.stringify(w23b))
+const w23c = calc2.vietaOf(1e308, 0, 1e-308, 0)
+ok('23d vieta 无实根不误判重根：Δ ≈ -4、discNeg', Math.abs(w23c.disc + 4) / 4 < 1e-12 && w23c.discNeg === true && w23c.diffAbs === null, JSON.stringify(w23c))
+const s23a = calc2.statsOf([8.99e307, -8.99e307])
+ok('23e statsOf 半量程阈值边界：mean / median 照常、方差 Infinity', s23a.type === 'ok' && s23a.mean === 0 && s23a.median === 0 && s23a.popVar === Infinity, JSON.stringify(s23a))
+const d23a = calc2.distOf([[5e-324, 0.5], [5e-324, 0.5]])
+ok('23f distOf 次正规期望不下溢：E = 5e-324', d23a.type === 'ok' && d23a.E === 5e-324 && d23a.D === 0, JSON.stringify(d23a))
+const d23b = calc2.distOf([[-1e308, 0.5], [1e308, 0.5]])
+ok('23f distOf 方差真溢出不连坐期望：E = 0、D / sd Infinity', d23b.type === 'ok' && d23b.E === 0 && d23b.D === Infinity && d23b.sd === Infinity, JSON.stringify(d23b))
+if (buglog === null) console.log('SKIP 23z BUGLOG 含第二十一轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+else ok('23z BUGLOG 含第二十一轮条目', buglog.indexOf('第二十一轮') >= 0)
 
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)
 if (fail) process.exit(1)
