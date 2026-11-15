@@ -36,7 +36,7 @@ import { join } from 'path'
 import calc from '../src/common/calc.js'
 import calc2 from '../src/common/calc2.js'
 
-let pass = 0, fail = 0
+let pass = 0, fail = 0, skip = 0
 function ok(name, cond, extra) { if (cond) { pass++ } else { fail++; console.log('FAIL', name, extra == null ? '' : extra) } }
 function eq(name, got, want) { ok(name + '（got=' + JSON.stringify(got) + '）', got === want, 'want=' + JSON.stringify(want)) }
 function approx(name, got, want, rel) { ok(name + '（got=' + got + '）', isFinite(got) && Math.abs(got / want - 1) <= (rel || 1e-9)) }
@@ -47,7 +47,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z/21z/22z/23z/24z/25z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* 审查仓不含 BUGLOG.md：相关断言记 SKIP */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -359,8 +359,7 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   const divs = tpl.match(/<div[^>]*>/g) || []
   eq('9e 模板无裸 div（1.5.20 钉注守恒）', divs.filter((d) => !/class=/.test(d)).length, 0)
   ok('9f 五个系数页 + 圆页都走 editCoeff', (ux.match(/editCoeff\(/g) || []).length >= 7)
-  if (buglog === null) console.log('SKIP 9g BUGLOG 含 1.6.0 条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-  else ok('9g BUGLOG 含 1.6.0 条目', buglog.indexOf('1.6.0') >= 0)
+  if (buglog !== null) { ok('9g BUGLOG 含 1.6.0 条目', buglog.indexOf('1.6.0') >= 0) } else { skip++ }
   eq('9h manifest 版本锁 1.6.0/60', man.versionName + '/' + man.versionCode, '1.6.0/60')
   // 黑屏真因守卫（2026-11-15 二分实测定案）：1.5.20 的黑屏与「体积」无关——
   // 同体积的 1.5.16 源码在模拟器正常、1.5.20 失败，真因是手环 Vela 的
@@ -375,11 +374,10 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   const litRe = /(?<![\w$.])\d+n(?![\w$])/g
   const calcSrc = readFileSync(new URL('../src/common/calc.js', import.meta.url), 'utf8')
   let paySrc = null
-  try { paySrc = readFileSync(new URL('../src/common/paykey.js', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] paykey.js 不入公开仓，缺失时 9k 断言按 SKIP 处理 */ }
+try { paySrc = readFileSync(new URL('../src/common/paykey.js', import.meta.url), 'utf8') } catch (e) { /* 审查仓不含 paykey.js：相关断言记 SKIP */ }
   eq('9i 黑屏守卫：calc.js 无 BigInt 字面量', (calcSrc.match(litRe) || []).length, 0)
   eq('9j 黑屏守卫：index.ux 无 BigInt 字面量', (ux.match(litRe) || []).length, 0)
-  if (paySrc === null) console.log('SKIP 9k 黑屏守卫：paykey.js 无 BigInt 字面量（[审查仓适配] paykey.js 不在公开仓）')
-  else eq('9k 黑屏守卫：paykey.js 无 BigInt 字面量', (paySrc.match(litRe) || []).length, 0)
+  if (paySrc !== null) { eq('9k 黑屏守卫：paykey.js 无 BigInt 字面量', (paySrc.match(litRe) || []).length, 0) } else { skip++ }
   // 拆页守卫（2026-11-15 实测定案第二幕）：BigInt 修复后，带四个新工具的整包
   // 在模拟器加载/初始化时撞 QuickJS 堆上限（日志 __out_of_memory_tracker +
   // bytecode 约 6.8MB），四个新工具（视图+方法+引擎）拆到第二页 pages/tools2、
@@ -520,7 +518,7 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   approx('12f 1e90 等边面积', calc.triArea(1e90, 1e90, 1e90).area, 4.330127018922193e179, 1e-12)
   eq('12f 3/4/5 面积仍 6', calc.triArea(3, 4, 5).area, 6)
   // B7：超大边 SSS 不再返回 NaN 解
-  eq('12g 1e200 等边报错', calc2.solveTriangle({ a: 1e200, b: 1e200, c: 1e200 }).error, '数字太大，超出精确计算范围')
+  ok('12g 1e200 等边出解、面积 Infinity（§26 改判：旧断言把面积溢出连坐整解当预期）', (() => { const r = calc2.solveTriangle({ a: 1e200, b: 1e200, c: 1e200 }); return !r.error && Math.abs(r.solutions[0].A - 60) < 1e-9 && r.solutions[0].area === Infinity })())
   // 【1.6.0 第十七轮复审修订】原断言钉死旧半角形的具体双精度值
   // 60.00000000000001；fromSSS 改稳定差形后同角为 60.00000000000002
   // （差 1 ulp），改按容差断言——钉的是「等边给 60°」不是舍入位。
@@ -595,8 +593,7 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
     eq('12s 12 位数结果完整', i.resDisp, '= 123,456,789,012')
     eq('12s 12 位数结果 30px', i.resPx, 30)
   }
-  if (buglog === null) console.log('SKIP 12r BUGLOG 含自查节（[审查仓适配] BUGLOG.md 不在公开仓）')
-  else ok('12r BUGLOG 含自查节', buglog.indexOf('发布前全量自查') >= 0)
+  if (buglog !== null) { ok('12r BUGLOG 含自查节', buglog.indexOf('发布前全量自查') >= 0) } else { skip++ }
 }
 
 // ---------- §13 C/D 轮自查修复（2026-11-15；接 §12 的 B 轮之后，两路只读审计
@@ -838,8 +835,7 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
     i.cr = '1e21'; i.circSolve()
     ok('13r 圆半径 1e21 周长走 ×10', i.cLines.join('|').indexOf('×10²¹') >= 0)
   }
-  if (buglog === null) console.log('SKIP 13z BUGLOG 含 C/D 轮自查节（[审查仓适配] BUGLOG.md 不在公开仓）')
-  else ok('13z BUGLOG 含 C/D 轮自查节', buglog.indexOf('C/D 轮') >= 0)
+  if (buglog !== null) { ok('13z BUGLOG 含 C/D 轮自查节', buglog.indexOf('C/D 轮') >= 0) } else { skip++ }
 }
 
 // §14 跨页导航闪屏修复（2026-11-15 真机反馈）：第二页四工具点开先闪一遍
@@ -873,8 +869,7 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   eq('14g 无去程参数仍默认第二页菜单（兜底）', makeInst2P({}).view, 'menu')
   ok('14h 回程 replace 带 backto 参数', ux2.indexOf("router.replace({ uri: '/pages/index', params: { backto: 'tools' } })") >= 0)
   ok('14i 存储兜底仍在（calc_tool_nav / calc_back_to 读写保留）', ux.indexOf("key: 'calc_back_to'") >= 0 && ux2.indexOf("key: 'calc_tool_nav'") >= 0)
-  if (buglog === null) console.log('SKIP 14z BUGLOG 含导航闪屏条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-  else ok('14z BUGLOG 含导航闪屏条目', buglog.indexOf('导航闪屏') >= 0)
+  if (buglog !== null) { ok('14z BUGLOG 含导航闪屏条目', buglog.indexOf('导航闪屏') >= 0) } else { skip++ }
 }
 
 // ===== §15 第十六轮外部复审（ChatGPT，2026-11-15）逐项核实后修复 =====
@@ -1017,8 +1012,7 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   }
   eq('15i 参数 perm＋存储残留 seq → 仍 perm', make2S(loadPage2S('seq'), { tool: 'perm' }).view, 'perm')
   eq('15i 无参数＋存储 seq → 兜底到 seq', make2S(loadPage2S('seq'), {}).view, 'seq')
-  if (buglog === null) console.log('SKIP 15z BUGLOG 含第十六轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-  else ok('15z BUGLOG 含第十六轮条目', buglog.indexOf('第十六轮') >= 0)
+  if (buglog !== null) { ok('15z BUGLOG 含第十六轮条目', buglog.indexOf('第十六轮') >= 0) } else { skip++ }
 }
 
 
@@ -1057,8 +1051,7 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   ok('16d 第二页系数键盘含 ( 与 +', inst2.quadKeys.some((k) => k.v === '(') && inst2.quadKeys.some((k) => k.v === '+'))
   ok('16e 主页 CSS 含 key-c5w 122px 且 6 处键盘绑 kcls', ux.indexOf('.key-c5w { width: 122px; }') >= 0 && (ux.match(/kcls \? \$item\.kcls/g) || []).length >= 6)
   ok('16e 第二页 CSS 含 key-c5w 122px 且 4 处键盘绑 kcls', ux2.indexOf('.key-c5w { width: 122px; }') >= 0 && (ux2.match(/kcls \? \$item\.kcls/g) || []).length >= 4)
-  if (buglog === null) console.log('SKIP 16z BUGLOG 含扩键条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-  else ok('16z BUGLOG 含扩键条目', buglog.indexOf('扩键') >= 0)
+  if (buglog !== null) { ok('16z BUGLOG 含扩键条目', buglog.indexOf('扩键') >= 0) } else { skip++ }
 }
 
 
@@ -1096,8 +1089,7 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   ok('17e (3,4,5) 角度面积不变', Math.abs(s345.A - 36.86989764584402) < 1e-12 && Math.abs(s345.C - 90) < 1e-12 && s345.area === 6)
   const s789 = T(7, 8, 9).solutions[0]
   ok('17e (7,8,9) 面积不变', Math.abs(s789.area - 26.832815729997478) < 1e-12)
-  if (buglog === null) console.log('SKIP 17z BUGLOG 含第十七轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-  else ok('17z BUGLOG 含第十七轮条目', buglog.indexOf('第十七轮') >= 0)
+  if (buglog !== null) { ok('17z BUGLOG 含第十七轮条目', buglog.indexOf('第十七轮') >= 0) } else { skip++ }
 }
 
 // ===== §18 第十八轮外部复审（ChatGPT，2026-11-15） =====
@@ -1207,8 +1199,7 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   const c2src = readFileSync(new URL('../src/common/calc2.js', import.meta.url), 'utf8')
   const sscBody = c2src.slice(c2src.indexOf('function sidesSumCmp'), c2src.indexOf('function verify'))
   ok('18f sidesSumCmp 本体无 BigInt 依赖', sscBody.indexOf('BigInt') < 0)
-  if (buglog === null) console.log('SKIP 18z BUGLOG 含第十八轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-  else ok('18z BUGLOG 含第十八轮条目', buglog.indexOf('第十八轮') >= 0)
+  if (buglog !== null) { ok('18z BUGLOG 含第十八轮条目', buglog.indexOf('第十八轮') >= 0) } else { skip++ }
 }
 
 // ===== §19 第十九轮复审（ChatGPT 复审第十八轮＋自查同类，2026-11-15） =====
@@ -1236,8 +1227,7 @@ eq('19d ASA(1e308,30°,60°) 第三边溢出报溢出而非对不上', calc2.sol
 ok('19d ASA(5,30°,60°) 普通情形不变', !!calc2.solveTriangle({ a: 5, b: null, c: null, A: 30, B: 60, C: null }).solutions)
 
 // 19z BUGLOG 守卫
-if (buglog === null) console.log('SKIP 19z BUGLOG 含第十九轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-else ok('19z BUGLOG 含第十九轮条目', buglog.indexOf('第十九轮') >= 0)
+if (buglog !== null) { ok('19z BUGLOG 含第十九轮条目', buglog.indexOf('第十九轮') >= 0) } else { skip++ }
 
 // ===== §20 数据统计工具（用户点名新增，2026-11-15） =====
 const st1 = calc2.statsOf([1, 2, 3, 4, 5])
@@ -1263,8 +1253,7 @@ ok('20 statsOf(0.1,0.2,0.3) mean≈0.2、popVar≈1/150', st9.type === 'ok' && M
 eq('20 statsOf(含 NaN) 报错', calc2.statsOf([1, NaN]).error, '有数据不对')
 const t2src = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 ok('20 tools2 页面已接 statsOf 且菜单含数据统计', t2src.indexOf('statsOf') >= 0 && t2src.indexOf('数据统计') >= 0)
-if (buglog === null) console.log('SKIP 20z BUGLOG 含数据统计条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-else ok('20z BUGLOG 含数据统计条目', buglog.indexOf('数据统计工具新增') >= 0)
+if (buglog !== null) { ok('20z BUGLOG 含数据统计条目', buglog.indexOf('数据统计工具新增') >= 0) } else { skip++ }
 
 // ===== §21 统计补全 + 分布列 / 向量 / 复数 / 韦达弦长（用户点名「那些都做」，2026-11-15） =====
 const s21a = calc2.statsOf([1, 2, 3, 4, 5])
@@ -1303,8 +1292,7 @@ eq('21 vietaOf a=0 报错', calc2.vietaOf(0, 1, 2, 1).error, 'a 不能是 0（�
 const w21d = calc2.vietaOf(1, -3, 2, 0)
 ok('21 vietaOf k=0 弦长 = |x1−x2| = 1', Math.abs(w21d.chord - 1) < 1e-12, JSON.stringify(w21d))
 ok('21 页面接线：四引擎与菜单齐全', t2src.indexOf('distOf') >= 0 && t2src.indexOf('vecOf') >= 0 && t2src.indexOf('cplxOps') >= 0 && t2src.indexOf('vietaOf') >= 0 && t2src.indexOf('分布列') >= 0 && t2src.indexOf('向量运算') >= 0 && t2src.indexOf('复数运算') >= 0 && t2src.indexOf('韦达 · 弦长') >= 0)
-if (buglog === null) console.log('SKIP 21z BUGLOG 含四工具条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-else ok('21z BUGLOG 含四工具条目', buglog.indexOf('分布列期望方差') >= 0 && buglog.indexOf('向量运算') >= 0 && buglog.indexOf('复数运算') >= 0 && buglog.indexOf('韦达定理与弦长') >= 0)
+if (buglog !== null) { ok('21z BUGLOG 含四工具条目', buglog.indexOf('分布列期望方差') >= 0 && buglog.indexOf('向量运算') >= 0 && buglog.indexOf('复数运算') >= 0 && buglog.indexOf('韦达定理与弦长') >= 0) } else { skip++ }
 
 // ===== §22 第二十轮外部复审（五项新功能边界，2026-11-15）＋同类自查 =====
 // 复审五项逐项实跑全部属实；另自查同类两处：复数乘法相消 NaN、
@@ -1341,8 +1329,7 @@ ok('22e statsOf 满量程：mean / median 照常、方差与极差 Infinity 不�
 const s22c = calc2.statsOf([1.3e154, -1.3e154])
 ok('22e statsOf 样本方差单独溢出：总体 1.69e308 有限、样本 Infinity', isFinite(s22c.popVar) && Math.abs(s22c.popVar - 1.69e308) / 1.69e308 < 1e-9 && s22c.sampVar === Infinity, JSON.stringify(s22c))
 ok('22e statsOf 中位数异号小数组：(−5, 5) 中位数 0', calc2.statsOf([-5, 5]).median === 0)
-if (buglog === null) console.log('SKIP 22z BUGLOG 含第二十轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-else ok('22z BUGLOG 含第二十轮条目', buglog.indexOf('第二十轮') >= 0)
+if (buglog !== null) { ok('22z BUGLOG 含第二十轮条目', buglog.indexOf('第二十轮') >= 0) } else { skip++ }
 
 // ===== §23 第二十一轮外部复审（对象内部尺度与缩放助手端点，2026-11-15） =====
 // 复审 8 项逐项实跑全部属实；修法统一为逐项 (尾数, 指数) 缩放
@@ -1377,8 +1364,7 @@ const d23b = calc2.distOf([[-1e308, 0.5], [1e308, 0.5]])
 ok('23f distOf 方差真溢出不连坐期望：E = 0、D / sd Infinity', d23b.type === 'ok' && d23b.E === 0 && d23b.D === Infinity && d23b.sd === Infinity, JSON.stringify(d23b))
 const fd1 = calc.formatDisplay(2.23607)
 ok('23g formatDisplay 不带尾零：2.23607 / 2.5 / 100.1 原样', fd1 === '2.23607' && calc.formatDisplay(2.5) === '2.5' && calc.formatDisplay(100.1) === '100.1', fd1)
-if (buglog === null) console.log('SKIP 23z BUGLOG 含第二十一轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-else ok('23z BUGLOG 含第二十一轮条目', buglog.indexOf('第二十一轮') >= 0)
+if (buglog !== null) { ok('23z BUGLOG 含第二十一轮条目', buglog.indexOf('第二十一轮') >= 0) } else { skip++ }
 
 // ===== §24 第二十二轮外部复审（精确求和与不连坐，2026-11-15） =====
 // 复审 3 项逐项实跑全部属实：expAdd 单尾数对齐累加的消去误差使点积 /
@@ -1404,8 +1390,7 @@ const v24 = calc2.vecOf([m24, m24], [m24, -m24])
 ok('24c vecOf 部分溢出引擎契约：dot 0、模长有限、夹角 90、sum/diff 各一分量 Inf', v24.dot === 0 && isFinite(v24.magA) && v24.angle === 90 && v24.sum[0] === Infinity && v24.diff[1] === Infinity, JSON.stringify(v24))
 ok('24c 向量页逐行判溢出：bad gate 已除、点积行有「太大」分支', ux2.indexOf('const bad = !isFinite(r.dot)') < 0 && ux2.indexOf('a·b 太大了') >= 0)
 ok('24c 数列 / 排列组合页逐行判溢出', ux2.indexOf('项太大了') >= 0 && ux2.indexOf('cBig') >= 0)
-if (buglog === null) console.log('SKIP 24z BUGLOG 含第二十二轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-else ok('24z BUGLOG 含第二十二轮条目', buglog.indexOf('第二十二轮') >= 0)
+if (buglog !== null) { ok('24z BUGLOG 含第二十二轮条目', buglog.indexOf('第二十二轮') >= 0) } else { skip++ }
 
 // ===== §25 第二十三轮复审（ChatGPT 报 4 项 + 自查 3 项）=====
 // 25a 点积普通量级路径（BUG-01）：旧版 MA,MB ≤ 1e150 走双精度直加、
@@ -1450,8 +1435,44 @@ try {
 } finally { globalThis.BigInt = savedBigInt }
 ok('25g 无 BigInt 兜底平均数与精确路径一致', meanNoBig === meanBig, String(meanNoBig) + ' vs ' + String(meanBig))
 eq('25g 无 BigInt 兜底点积抵消仍 1', dotNoBig, 1)
-if (buglog === null) console.log('SKIP 25z BUGLOG 含第二十三轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
-else ok('25z BUGLOG 含第二十三轮条目', buglog.indexOf('第二十三轮') >= 0)
+if (buglog !== null) { ok('25z BUGLOG 含第二十三轮条目', buglog.indexOf('第二十三轮') >= 0) } else { skip++ }
 
-console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)
+// §26 第二十三轮补修（交接深挖 N1–N6 + BigInt 口径更正）：手环
+// QuickJS 没有 BigInt（1.5.20 定案）——真机恒走无 BigInt 路径，
+// 该路径已换成 27 位肢体精确算术，必须与 BigInt 路径逐位一致。
+{
+  const cm = calc2.cplxOps([9.54250347729416e73, 1.3690040441523358e23], [9.54250347729416e73, 6.651505012211527e124])
+  eq('26a N6 复数乘法实部不再被乘积舍入吞掉', cm.mul[0], -3.687394939405315e131)
+  const B = 9.54250347729416e73 * Math.pow(2, 260), A2 = 1.3690040441523358e23 * Math.pow(2, 260), C2 = 1.6628762530528816e124 * Math.pow(2, 260)
+  eq('26b N1 点积缩放路径精确值', calc2.vecOf([B, A2], [B, -4 * C2]).dot, 3.14862945643949e288)
+  const ap = calc2.seqSolve('ap', 1e308, 0, 3)
+  ok('26c N2 数列 AP an 有限 Sn 溢出各自返回', ap.type === 'ok' && ap.an === 1e308 && ap.Sn === Infinity)
+  const tr = calc2.solveTriangle({ a: 1e200, b: 1e200, c: 1e200 })
+  ok('26d N3 三角形面积溢出不连坐整解', !tr.error && tr.solutions[0].area === Infinity && Math.abs(tr.solutions[0].B - 60) < 1e-9)
+  const rt = calc2.solveRightTri({ a: 1.7e308, A: 30 })
+  ok('26e N4 直角三角形边溢出角照常给', rt.type === 'ok' && rt.B === 60 && rt.b === Infinity && rt.c === Infinity)
+  // 无 BigInt（= 真机路径）与 BigInt 路径逐项对拍：关键引擎全等
+  const savedBI = globalThis.BigInt
+  const battery = [
+    () => calc2.vecOf([1, 1e100, 1e100], [1, 1e100, -1e100]).dot,
+    () => calc2.vecOf([B, A2], [B, -4 * C2]).dot,
+    () => calc2.vietaOf(1.3690040441523358e23, 9.54250347729416e73, 1.6628762530528816e124, 0).disc,
+    () => calc2.statsOf([1].concat(Array(200).fill(Math.pow(2, -60)))).mean,
+    () => calc2.distOf([[1, 0.5], [1e308, 0.25], [-1e308, 0.25]]).E,
+    () => calc2.cplxOps([9.54250347729416e73, 1.3690040441523358e23], [9.54250347729416e73, 6.651505012211527e124]).mul[0],
+    () => calc2.cplxOps([1e-320, 0], [1e-320, 0]).div[0]
+  ]
+  const onVals = battery.map(f => f())
+  globalThis.BigInt = undefined
+  let offVals = null
+  try { offVals = battery.map(f => f()) } finally { globalThis.BigInt = savedBI }
+  ok('26f 无 BigInt 路径与 BigInt 路径逐项全等（真机口径）', offVals !== null && offVals.every((v, i) => v === onVals[i]))
+  const uxIdx = readFileSync(new URL('../src/pages/index/index.ux', import.meta.url), 'utf8')
+  ok('26g 页脚受众只写初高中', uxIdx.indexOf('为初高中同学备的工具') >= 0 && uxIdx.indexOf('小初高') < 0)
+  const uxT2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
+  ok('26h 三角形页面积溢出单独标太大', uxT2.indexOf('面积 太大了，超出范围') >= 0)
+}
+if (buglog !== null) { ok('26z BUGLOG 含第二十三轮补修条目', buglog.indexOf('第二十三轮补修') >= 0) } else { skip++ }
+
+console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail + ' skip=' + skip)
 if (fail) process.exit(1)

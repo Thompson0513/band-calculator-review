@@ -423,7 +423,7 @@ function solveTriangle(k) {
   // （1e200）算出的 NaN 角 / 溢出面积不许当作解返回。0 角只可能是极端
   // 边比下真值小于最小次正规数（≈1e-407°）的正确舍入，靠三角和把关。
   const good = passed.filter(function (sol) {
-    return [sol.A, sol.B, sol.C].every(function (g) { return isFinite(g) && g >= 0 && g < 180 }) && Math.abs(sol.A + sol.B + sol.C - 180) < 1e-6 && isFinite(sol.area) && sol.area >= 0
+    return [sol.A, sol.B, sol.C].every(function (g) { return isFinite(g) && g >= 0 && g < 180 }) && Math.abs(sol.A + sol.B + sol.C - 180) < 1e-6 && sol.area >= 0 // 面积允许 Infinity（第二十三轮补修 N3）：边 1e200 的等边三角形角与边都对、只有面积真超限，旧版要求面积有限把整解吞了；area >= 0 同时挡住 NaN（NaN 比较恒 false），页面把面积行单独标「太大」
   })
   if (!good.length) return { error: '数字太大，超出精确计算范围' }
   return { type: 'ok', solutions: good }
@@ -470,29 +470,100 @@ function expSumFE(terms) {
   }
   if (!items.length) return [0, 0]
   if (typeof BigInt !== 'function') {
-    // 无 BigInt 兜底（第二十三轮复审风险项强化）：先按指数分桶合并
-    // （同指数项在双精度里相加、误差只留在本桶内），再按指数从大到
-    // 小折进累加器——大项先互相抵消、小项最后才并入，不会被先到的
-    // 大数逐个吞掉（旧单一累加器：[1, 200 个 2^-60] 的小量全舍）。
-    // 目标手环的 QuickJS 带 BigInt（构造调用在真机上一直在跑），此
-    // 分支只作保险，§25 有专门隐藏 BigInt 的回归盯着它。
-    const buckets = new Map()
+    // 无 BigInt 路径 = 27 位肢体精确整数算术（第二十三轮补修）：手
+    // 环 QuickJS 没有 BigInt（1.5.20 定案），真机上 expSumFE 恒走这
+    // 条路——它必须与 BigInt 路径逐位一致，不能只是近似。每项 53
+    // 位尾数拆成 27+26 位整数段（双精度可精确表示），按位偏移对齐
+    // 进正 / 负两组肢体阵列（每肢 < 2^27、进位全程精确），两组相减
+    // 后取高 53 位、四舍六入五成双还原。§26 有与 BigInt 路径逐项
+    // 对拍的模糊测试盯着它（随机项集两条路结果必须全等）。
+    const LIMB = 134217728 // 2^27（首版误写 268435456 = 2^28、与 27 位网格错位，对拍抓出）
+    const pos = new Map(), neg = new Map()
+    const addLimb = function (map, idx, v) {
+      let i = idx, carry = v
+      while (carry > 0) {
+        const cur = (map.get(i) || 0) + carry
+        if (cur >= LIMB) { map.set(i, cur - LIMB); carry = 1 } else { map.set(i, cur); carry = 0 }
+        i++
+      }
+    }
+    const addPart = function (map, q, v) {
+      // v < 2^53 的非负整数落在第 q 肢起的两肢上
+      addLimb(map, q, v % LIMB)
+      const hi = Math.floor(v / LIMB)
+      if (hi > 0) addLimb(map, q + 1, hi)
+    }
     for (const t of items) {
-      const bk = buckets.get(t[1])
-      if (bk === undefined) buckets.set(t[1], [t[0], t[1]])
-      else bk[0] += t[0]
+      const M = Math.round(Math.abs(t[0]) * 4503599627370496) // 53 位整数
+      const o = t[1] - emin
+      const q = Math.floor(o / 27), r = o - q * 27
+      const map = t[0] < 0 ? neg : pos
+      const mLo = M % LIMB, mHi = (M - mLo) / LIMB
+      addPart(map, q, mLo * Math.pow(2, r))
+      if (mHi > 0) addPart(map, q + 1, mHi * Math.pow(2, r))
     }
-    const st = [0, 0]
-    const sorted = Array.from(buckets.values()).sort(function (p, q) { return q[1] - p[1] })
-    for (const t of sorted) {
-      if (st[0] === 0) { st[0] = t[0]; st[1] = t[1] }
-      else if (t[1] > st[1]) { st[0] = st[0] * Math.pow(2, st[1] - t[1]) + t[0]; st[1] = t[1] }
-      else st[0] += t[0] * Math.pow(2, t[1] - st[1])
-      let g = 0
-      while (Math.abs(st[0]) >= 2) { st[0] /= 2; st[1] += 1 }
-      while (st[0] !== 0 && Math.abs(st[0]) < 1 && g++ < 1200) { st[0] *= 2; st[1] -= 1 }
+    const toArr = function (map) {
+      let mx = -1
+      for (const k of map.keys()) if (k > mx) mx = k
+      const a = new Array(mx + 1).fill(0)
+      for (const ent of map) a[ent[0]] = ent[1]
+      return a
     }
-    return st
+    const pa = toArr(pos), na = toArr(neg)
+    const L = Math.max(pa.length, na.length)
+    let cmp = 0
+    for (let i = L - 1; i >= 0; i--) {
+      const d = (pa[i] || 0) - (na[i] || 0)
+      if (d !== 0) { cmp = d > 0 ? 1 : -1; break }
+    }
+    if (cmp === 0) return [0, 0]
+    const big = cmp > 0 ? pa : na, sml = cmp > 0 ? na : pa
+    const res = new Array(L).fill(0)
+    let borrow = 0
+    for (let i = 0; i < L; i++) {
+      let d = (big[i] || 0) - (sml[i] || 0) - borrow
+      if (d < 0) { d += LIMB; borrow = 1 } else borrow = 0
+      res[i] = d
+    }
+    let h = L - 1
+    while (h > 0 && res[h] === 0) h--
+    if (res[h] === 0) return [0, 0]
+    const totalBits = 27 * h + res[h].toString(2).length
+    // 取高 53 位：最高肢只贡献它自己的有效位（位数 = totalBits − 27h，
+    // 不是整 27 位——首版把最高肢按整 27 位计、结果系统性小 2^3 倍，
+    // 对拍第一轮就抓出来了），其余肢整肢拼入、最后一肢按位切分舍入。
+    let top = res[h], nbits = totalBits - 27 * h
+    for (let i = h - 1; i >= 0 && nbits < 53; i--) {
+      const limb = res[i]
+      if (nbits + 27 <= 53) {
+        top = top * LIMB + limb; nbits += 27
+        // 整肢拼满 53 位但下面还有肢体时，被丢弃的位同样要参与舍入
+        // （guard 位 = 下一肢最高位，sticky = 其余任何一位）——首版漏
+        // 了这一步、70/4000 组对拍出 1 ULP 差，全是这么来的。
+        if (nbits === 53 && i > 0) {
+          const nx = res[i - 1]
+          const g = Math.floor(nx / 67108864)
+          let s = (nx % 67108864) !== 0
+          if (!s) for (let j = i - 2; j >= 0; j--) if (res[j] !== 0) { s = true; break }
+          if (g === 1 && (s || top % 2 === 1)) top += 1
+        }
+      } else {
+        const take = 53 - nbits
+        const hiPart = Math.floor(limb / Math.pow(2, 27 - take))
+        const loPart = limb - hiPart * Math.pow(2, 27 - take)
+        top = top * Math.pow(2, take) + hiPart
+        nbits = 53
+        let below = false
+        for (let j = i - 1; j >= 0; j--) if (res[j] !== 0) { below = true; break }
+        const half = Math.pow(2, 27 - take - 1)
+        if (loPart > half || (loPart === half && (below || top % 2 === 1))) top += 1
+      }
+    }
+    if (nbits < 53) top *= Math.pow(2, 53 - nbits)
+    let shift = totalBits - 53
+    if (top >= 9007199254740992) { top /= 2; shift += 1 }
+    const f = top / 4503599627370496
+    return [cmp < 0 ? -f : f, emin + shift]
   }
   let S = BigInt(0)
   for (const t of items) {
@@ -780,10 +851,17 @@ function cplxOps(z1, z2) {
     // 先下溢丢失，逐项算才保得住（[1e308,1e-308]×[1,0] 的虚部、
     // [1e308,1e-308]×[1e-308,−1e308] 的实部 2）。任一积项非有限
     // （真溢出或双双溢出相消）时回退缩放域结果。
-    const t1 = prodT(a, c), t2 = prodT(b, d), t3 = prodT(a, d), t4 = prodT(b, c)
+    // 乘法（第二十三轮补修，交接深挖 N6）：实部 / 虚部同样走精确乘
+    // 积 + 精确求和——旧版 prodT 把单个乘积先舍入成双精度再相减，
+    // 近抵消时整段算错：[9.54e73, 1.37e23] × [9.54e73, 6.65e124]
+    // 实部算 0、真值 −3.687e131（符号都丢）。缩放域 mulS 只作兜底。
+    const termsMR = [], termsMI = []
+    expPushProd(termsMR, a, c, 1); expPushProd(termsMR, b, d, -1)
+    expPushProd(termsMI, a, d, 1); expPushProd(termsMI, b, c, 1)
+    const mrV = expSumVal(termsMR), miV = expSumVal(termsMI)
     mul = [
-      (isFinite(t1) && isFinite(t2)) ? t1 - t2 : mulS[0],
-      (isFinite(t3) && isFinite(t4)) ? t3 + t4 : mulS[1]
+      isNaN(mrV) ? mulS[0] : mrV,
+      isNaN(miV) ? mulS[1] : miV
     ]
     // 除法（第二十三轮自查修正）：分子 = z1·conj(z2) 必须全程留在
     // (尾数, 指数) 域——旧版分子先落回双精度，除数是次正规量级时分

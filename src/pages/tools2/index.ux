@@ -859,8 +859,8 @@ export default {
       const ang = []
       for (const s of ['A', 'B', 'C']) if (k[s] === null) ang.push(s + ' ' + angSeg(sol[s]))
       if (ang.length) { lines.push((tagged ? '' : tag) + ang.join(' · ')); tagged = true }
-      const fa = fmtSide(sol.area)
-      lines.push((tagged ? '' : tag) + '面积 ' + (fa.exact ? '= ' : '≈ ') + fa.t)
+      if (!isFinite(sol.area)) lines.push((tagged ? '' : tag) + '面积 太大了，超出范围')
+      else { const fa = fmtSide(sol.area); lines.push((tagged ? '' : tag) + '面积 ' + (fa.exact ? '= ' : '≈ ') + fa.t) }
     })
     this.lwLines = lines
   },
