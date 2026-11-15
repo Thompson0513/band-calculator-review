@@ -1765,16 +1765,18 @@ export default {
       this.keyInput = ''
       this.refreshKeyDisp()
       this.unlockMsg = ''
-      try { vibrator.vibrate({ mode: 'long' }) } catch (e) {}
+      // 解锁成功不再单独震（旧版 long 长震 + 确认键的短震 + 直达目标的
+      // 短震连成三下，真机反馈「怪怪的」）：confirmUnlock 开头已震过
+      // 一下，直达目标统一 silent，一次点按全程只震一下。
       // 2026-11-15 自查 C7：解锁成功直达被拦的目标，不用再点一次。
       // gatePaid 已放行（unlocked=true），以下调用不会再被拦。
       if (target) {
-        if (target.indexOf('tool:') === 0) { this.openTool(target.slice(5)); return }
-        if (target.indexOf('solver:') === 0) { this.openSolver(target.slice(7)); return }
-        if (target.indexOf('plot:') === 0) { this.openPlot(target.slice(5)); return }
+        if (target.indexOf('tool:') === 0) { this.openTool(target.slice(5), true); return }
+        if (target.indexOf('solver:') === 0) { this.openSolver(target.slice(7), true); return }
+        if (target.indexOf('plot:') === 0) { this.openPlot(target.slice(5), true); return }
         if (target === 'tools') { this.view = 'tools'; return }
         if (target === 'solvers') { this.view = 'solvers'; return }
-        if (target === 'history') { this.openHistory(); return }
+        if (target === 'history') { this.openHistory(true); return }
         if (target === 'sci') { this.padPage = 'sci'; this.view = 'calc'; return }
         if (target === 'plotcfg') { this.view = 'plotcfg'; return }
       }
@@ -1789,9 +1791,9 @@ export default {
   goTools() { this.buzz(); if (this.gatePaid('tools')) return; this.view = 'tools' },
   goSolvers() { this.buzz(); if (this.gatePaid('solvers')) return; this.view = 'solvers' },
   openTools() { this.buzz(); if (this.gatePaid('tools')) return; this.view = 'tools' },
-  openHistory() { this.buzz(); if (this.gatePaid('history')) return; this.refreshHistDisp(); this.view = 'history' },
-  openTool(id) {
-    this.buzz()
+  openHistory(silent) { if (!silent) this.buzz(); if (this.gatePaid('history')) return; this.refreshHistDisp(); this.view = 'history' },
+  openTool(id, silent) {
+    if (!silent) this.buzz()
     if (this.gatePaid('tool:' + id)) return
     if (id === 'unit') { this.view = 'unit'; this.unitCompute() }
     else if (id === 'base') { this.view = 'base'; this.baseCompute() }
@@ -1806,15 +1808,17 @@ export default {
     else if (id === 'history') { this.view = 'history' }
   },
   navTool(id) {
-    this.buzz()
+    // 不在这里 buzz：唯一调用方 openTool 已经震过一次（2026-11-15 真机
+    // 反馈：点第二页工具震两次，根源就是 openTool + navTool 各震一次）。
+    // 全应用口径：一次点按只震一下、清脆短震，见 buzz()。
     try { storage.set({ key: 'calc_tool_nav', value: id }) } catch (e) {}
     // 必须 replace 不能 push：手环 QuickJS 堆上限紧，push 会让主页与第二页的
     // 编译代码同时驻留、加载第二页时 OOM（2026-11-15 模拟器实测，见 BUGLOG）。
     // 目标工具走路由参数同步传（首帧直达、不闪第二页菜单）；存储键保留作兜底。
     router.replace({ uri: '/pages/tools2', params: { tool: id } })
   },
-  openSolver(id) {
-    this.buzz()
+  openSolver(id, silent) {
+    if (!silent) this.buzz()
     if (this.gatePaid('solver:' + id)) return
     if (id === 'lin') { this.view = 'lin'; this.linSolve() }
     else if (id === 'quad') { this.view = 'quad'; this.quadSolve() }
@@ -2700,8 +2704,8 @@ export default {
   },
 
   backFromPlot() { this.buzz(); this.view = this.plotBack },
-  openPlot(kind) {
-    this.buzz()
+  openPlot(kind, silent) {
+    if (!silent) this.buzz()
     if (this.gatePaid('plot:' + kind)) return
     if (kind === 'quad') {
       const a = parseCoeff0(this.qa), b = parseCoeff0(this.qb), c = parseCoeff0(this.qc)

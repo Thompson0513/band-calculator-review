@@ -1474,5 +1474,20 @@ if (buglog !== null) { ok('25z BUGLOG 含第二十三轮条目', buglog.indexOf(
 }
 if (buglog !== null) { ok('26z BUGLOG 含第二十三轮补修条目', buglog.indexOf('第二十三轮补修') >= 0) } else { skip++ }
 
+// §27 震动口径（2026-11-15 真机反馈）：点第二页工具震两次（openTool 与
+// navTool 各震一次）、解锁成功短+长+短连震三下。定版：所有场景一次
+// 点按只震一下、清脆短震——buzz() 是两页唯一的震动出口（mode short），
+// 禁 long、禁调用链叠震。
+{
+  const uxIdx = readFileSync(new URL('../src/pages/index/index.ux', import.meta.url), 'utf8')
+  const uxT2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
+  ok('27a 全应用无 long 长震', uxIdx.indexOf("mode: 'long'") < 0 && uxT2.indexOf("mode: 'long'") < 0)
+  ok('27b vibrate 只出现在 buzz 定义里（各一处）', (uxIdx.match(/vibrator\.vibrate/g) || []).length === 1 && (uxT2.match(/vibrator\.vibrate/g) || []).length === 1)
+  const navBody = uxIdx.slice(uxIdx.indexOf('navTool(id)'), uxIdx.indexOf('openSolver'))
+  ok('27c navTool 不再重复 buzz', navBody.indexOf('this.buzz()') < 0)
+  ok('27d 解锁直达目标走 silent 不叠震', uxIdx.indexOf('this.openTool(target.slice(5), true)') >= 0 && uxIdx.indexOf('this.openHistory(true)') >= 0)
+}
+if (buglog !== null) { ok('27z BUGLOG 含震动口径条目', buglog.indexOf('震动口径') >= 0) } else { skip++ }
+
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail + ' skip=' + skip)
 if (fail) process.exit(1)
