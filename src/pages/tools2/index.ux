@@ -139,6 +139,38 @@
       </div>
     </div>
 
+    <!-- ===== 数据统计 ===== -->
+    <div class="view" if="{{view === 'stats'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">数据统计</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <div class="chip-row">
+        <div class="chip {{stTab === $item.id ? 'chip-on' : ''}}" for="{{stTabChips}}" onclick="setStTab($item.id)">
+          <text class="chip-t {{stTab === $item.id ? 'chip-t-on' : ''}}">{{$item.name}}</text>
+        </div>
+      </div>
+      <div class="q-fields">
+        <div class="q-field q-field-on q-field-st">
+          <text class="q-fl">数</text><text class="q-fv" style="font-size: {{stFvPx}}px;">{{stIn ? stIn : '?'}}</text>
+        </div>
+        <div class="st-mini" onclick="stDel"><text class="st-mini-t">删上个</text></div>
+        <div class="st-mini" onclick="stClear"><text class="st-mini-t">清空</text></div>
+      </div>
+      <div class="q-res" if="{{stTab === 'res'}}">
+        <text class="q-line q-line-s" for="{{stLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="q-res" if="{{stTab === 'data'}}">
+        <text class="q-line q-line-s" for="{{stRows}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm key-xs key-c5 {{$item.kcls ? $item.kcls : ''}}" for="{{quadKeys}}" onclick="stPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -400,7 +432,8 @@ export default {
       { id: 'rtri', ico: '90°', name: '解直角三角形', desc: '角 C 是直角，填任意两个量' },
       { id: 'law', ico: '弦', name: '正弦 · 余弦定理', desc: '任意三角形，填任意三个量' },
       { id: 'perm', ico: '排', name: '排列组合', desc: 'A(n,r) 与 C(n,r)，整数精确算' },
-      { id: 'seq', ico: '列', name: '等差 · 等比数列', desc: '填首项与公差 / 公比，求项与和' }
+      { id: 'seq', ico: '列', name: '等差 · 等比数列', desc: '填首项与公差 / 公比，求项与和' },
+      { id: 'stats', ico: '均', name: '数据统计', desc: '平均数 · 方差 · 标准差' }
     ],
     rta: '3', rtb: '4', rtc: '', rtA: '', rtB: '',
     rtField: 'a',
@@ -422,6 +455,16 @@ export default {
     seqKindChips: [
       { id: 'ap', name: '等差' },
       { id: 'gp', name: '等比' }
+    ],
+    stIn: '',
+    stVals: [],
+    stTab: 'res',
+    stLines: ['输一个数，点 » 加入数据'],
+    stRows: ['还没有数据'],
+    stFvPx: 20,
+    stTabChips: [
+      { id: 'res', name: '结果' },
+      { id: 'data', name: '数据' }
     ],
     rtFieldDefs1: [
       { key: 'a', label: 'a', val: '3' }, { key: 'b', label: 'b', val: '4' }, { key: 'c', label: 'c', val: '' }
@@ -447,7 +490,7 @@ export default {
     // 不闪本页菜单（2026-11-15 真机反馈修复）。下面的存储读是参数缺失时的兜底。
     // 2026-11-15 第十六轮复审：参数有效时完全跳过存储读——旧写法无条件
     // 读，存储里若残留旧值会把参数指定的页面覆盖掉（异步竞态）。
-    const paramTool = this.tool === 'rtri' || this.tool === 'law' || this.tool === 'perm' || this.tool === 'seq'
+    const paramTool = this.tool === 'rtri' || this.tool === 'law' || this.tool === 'perm' || this.tool === 'seq' || this.tool === 'stats'
     if (paramTool) this.view = this.tool
     this.fetchDeviceId()
     const self = this
@@ -455,7 +498,7 @@ export default {
       storage.get({
         key: 'calc_tool_nav',
         success: function (data) {
-          if (data === 'rtri' || data === 'law' || data === 'perm' || data === 'seq') self.view = data
+          if (data === 'rtri' || data === 'law' || data === 'perm' || data === 'seq' || data === 'stats') self.view = data
           try { storage.set({ key: 'calc_tool_nav', value: '' }) } catch (e) {}
         },
         fail: function () {}
@@ -465,6 +508,7 @@ export default {
     this.lwSolve()
     this.pmSolve()
     this.sqSolve()
+    this.stSolve()
   },
   onBackPress() {
     if (this.view === 'menu' || this.view === 'locked') return false
@@ -709,6 +753,57 @@ export default {
     }
     this[prop] = r
     this.sqSolve()
+  },
+
+  setStTab(id) { this.buzz(); this.stTab = id },
+  stSolve() {
+    this.stFvPx = fvPxOf([this.stIn], true)
+    const n = this.stVals.length
+    // 数据页：每行 3 个、最多 5 行，再多只报总数（删上个仍可逐个删）
+    if (n === 0) this.stRows = ['还没有数据']
+    else {
+      const rows = []
+      for (let i = 0; i < n && rows.length < 5; i += 3) {
+        const parts = []
+        for (let j = i; j < Math.min(i + 3, n); j++) parts.push((j + 1) + '.' + FD(this.stVals[j]))
+        rows.push(parts.join('  '))
+      }
+      rows.push(n > 15 ? '…共 ' + n + ' 个（删上个逐个删）' : '共 ' + n + ' 个')
+      this.stRows = rows
+    }
+    if (n === 0) { this.stLines = ['输一个数，点 » 加入数据', '有数据后自动出平均数和方差']; return }
+    const r = calc2.statsOf(this.stVals)
+    if (r.error) { this.stLines = [r.error]; return }
+    const fm = fmtVal(r.mean), fpv = fmtVal(r.popVar), fps = fmtVal(r.popSd)
+    const lines = [
+      '平均数 ' + (fm.exact ? '= ' : '≈ ') + fm.t,
+      '总体方差 ' + (fpv.exact ? '= ' : '≈ ') + fpv.t,
+      '总体标准差 ' + (fps.exact ? '= ' : '≈ ') + fps.t
+    ]
+    if (r.sampVar === null) lines.push('样本方差 要 2 个以上数据')
+    else {
+      const fsv = fmtVal(r.sampVar), fss = fmtVal(r.sampSd)
+      lines.push('样本方差 ' + (fsv.exact ? '= ' : '≈ ') + fsv.t)
+      lines.push('样本标准差 ' + (fss.exact ? '= ' : '≈ ') + fss.t)
+    }
+    this.stLines = lines
+  },
+  stAdd() {
+    const v = parseCoeff(this.stIn)
+    if (this.stIn === '' || isNaN(v)) { this.stTab = 'res'; this.stLines = ['先输一个数再点 »']; return }
+    if (this.stVals.length >= 50) { this.stTab = 'res'; this.stLines = ['最多 50 个数据']; return }
+    this.stVals.push(v)
+    this.stIn = ''
+    this.stSolve()
+  },
+  stDel() { this.buzz(); if (this.stVals.length) this.stVals.pop(); this.stSolve() },
+  stClear() { this.buzz(); this.stVals = []; this.stIn = ''; this.stSolve() },
+  stPad(v) {
+    this.buzz()
+    const r = editCoeff(this.stIn, v)
+    if (r === 'NEXT') { this.stAdd(); return }
+    this.stIn = r
+    this.stFvPx = fvPxOf([this.stIn], true)
   }
 }
 </script>
@@ -891,6 +986,11 @@ export default {
 .h-pgbtn { height: 30px; border-radius: 15px; background-color: #FFFFFF; border: 1px solid #D8DEE7; padding-left: 14px; padding-right: 14px; align-items: center; justify-content: center; margin-left: 8px; margin-right: 8px; }
 .h-pgt { font-size: 14px; color: #5F7E99; }
 .h-pginfo { font-size: 13px; color: #7C8798; }
+
+/* 数据统计 */
+.q-field-st { width: 150px; }
+.st-mini { height: 40px; border-radius: 14px; background-color: #FFFFFF; border: 1px solid #D8DEE7; padding-left: 12px; padding-right: 12px; margin-right: 9px; align-items: center; justify-content: center; align-self: center; }
+.st-mini-t { font-size: 15px; color: #5F7E99; }
 
 /* 解锁 */
 .lock-row { width: 312px; height: 62px; border-radius: 16px; background-color: #FFFFFF; border: 1px solid #D8DEE7; flex-direction: row; align-items: center; padding-left: 14px; padding-right: 12px; margin-left: 12px; margin-top: 6px; margin-bottom: 2px; }

@@ -47,7 +47,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z 断言按 SKIP 处理 */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -348,7 +348,8 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   const inst = makeInst()
   eq('9a 公约数基线不变', JSON.stringify(inst.gLines), JSON.stringify(['最大公约数 = 6', '最小公倍数 = 36']))
   eq('9b 根号化简基线不变', inst.sqrtLines[0], '√12 = 2√3')
-  eq('9c 工具箱 14 个工具（圆 + 微信定案四个新工具）', inst.tools.length, 14)
+  // 2026-11-15 修订：新增「数据统计」工具后工具箱 14 → 15 个（§20），按先例翻转并披露。
+  eq('9c 工具箱 15 个工具（圆 + 微信定案四个新工具 + 数据统计）', inst.tools.length, 15)
   ok('9c 工具列表含圆', inst.tools.some((t) => t.id === 'circ'))
   ok('9c 工具列表含四个新工具', ['rtri', 'law', 'perm', 'seq'].every((id) => inst.tools.some((t) => t.id === id)))
   ok('9d 模板含圆视图', ux.indexOf("view === 'circ'") >= 0)
@@ -1207,6 +1208,57 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   if (buglog === null) console.log('SKIP 18z BUGLOG 含第十八轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
   else ok('18z BUGLOG 含第十八轮条目', buglog.indexOf('第十八轮') >= 0)
 }
+
+// ===== §19 第十九轮复审（ChatGPT 复审第十八轮＋自查同类，2026-11-15） =====
+// 19a 等差数列末项中间溢出（ChatGPT 报）
+const apO = calc2.seqSolve('ap', -1.5e308, 1e308, 3)
+ok('19a AP(-1.5e308,1e308,3) an ≈5e307、Sn ≈-1.5e308', apO.type === 'ok' && Math.abs(apO.an - 5e307) / 5e307 < 1e-12 && Math.abs(apO.Sn - -1.5e308) / 1.5e308 < 1e-12, JSON.stringify(apO))
+const apO2 = calc2.seqSolve('ap', 1e308, -1e308, 3)
+ok('19a AP(1e308,-1e308,3) an = -1e308、Sn = 0', apO2.type === 'ok' && apO2.an === -1e308 && apO2.Sn === 0, JSON.stringify(apO2))
+ok('19a AP(1.5e308,1e308,3) 真溢出仍报错', !!calc2.seqSolve('ap', 1.5e308, 1e308, 3).error)
+eq('19a AP(1,1,100) an/Sn 仍精确', JSON.stringify(calc2.seqSolve('ap', 1, 1, 100)), JSON.stringify({ type: 'ok', an: 100, Sn: 5050 }))
+
+// 19b 面积中间溢出（自查同类：finish 乘回 sc²）
+const sasT = calc2.solveTriangle({ a: 1e200, b: 1e200, c: null, A: null, B: null, C: 5.729577951308232e-149 })
+ok('19b SAS(1e200,1e200,5.7e-149°) 面积 ≈5e249 不再误报溢出', !!sasT.solutions && Math.abs(sasT.solutions[0].area - 5e249) / 5e249 < 1e-6, JSON.stringify(sasT))
+const sasR = calc2.solveTriangle({ a: 1e308, b: 1e-100, c: null, A: null, B: null, C: 90 })
+ok('19b SAS(1e308,1e-100,90°) 有解、A≈90°、面积 ≈5e207', !!sasR.solutions && Math.abs(sasR.solutions[0].A - 90) < 1e-9 && Math.abs(sasR.solutions[0].area - 5e207) / 5e207 < 1e-6, JSON.stringify(sasR))
+
+// 19c 极端边比角度塌陷（自查同类：fromSSS 对数域兜底）
+const sssX = calc2.solveTriangle({ a: 1e308, b: 1e308, c: 1e-100, A: null, B: null, C: null })
+ok('19c SSS(1e308,1e308,1e-100) A≈B≈90°、C 为极小角', !!sssX.solutions && Math.abs(sssX.solutions[0].A - 90) < 1e-9 && Math.abs(sssX.solutions[0].B - 90) < 1e-9 && sssX.solutions[0].C >= 0 && sssX.solutions[0].C < 1e-300, JSON.stringify(sssX))
+ok('19c SSS(1e308,1e308,1e-100) 面积走海伦兜底 ≈5e207（sin 式为 0）', !!sssX.solutions && Math.abs(sssX.solutions[0].area - 5e207) / 5e207 < 1e-6, JSON.stringify(sssX))
+
+// 19d ASA 边长溢出的文案（自查同类）
+eq('19d ASA(1e308,30°,60°) 第三边溢出报溢出而非对不上', calc2.solveTriangle({ a: 1e308, b: null, c: null, A: 30, B: 60, C: null }).error, '数字太大，超出精确计算范围')
+ok('19d ASA(5,30°,60°) 普通情形不变', !!calc2.solveTriangle({ a: 5, b: null, c: null, A: 30, B: 60, C: null }).solutions)
+
+// 19z BUGLOG 守卫
+if (buglog === null) console.log('SKIP 19z BUGLOG 含第十九轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+else ok('19z BUGLOG 含第十九轮条目', buglog.indexOf('第十九轮') >= 0)
+
+// ===== §20 数据统计工具（用户点名新增，2026-11-15） =====
+const st1 = calc2.statsOf([1, 2, 3, 4, 5])
+ok('20 statsOf(1..5) mean=3、popVar=2、sampVar=2.5', st1.type === 'ok' && st1.mean === 3 && st1.popVar === 2 && st1.sampVar === 2.5 && Math.abs(st1.popSd - Math.SQRT2) < 1e-15 && Math.abs(st1.sampSd - Math.sqrt(2.5)) < 1e-15, JSON.stringify(st1))
+const st2 = calc2.statsOf([2, 4, 4, 4, 5, 5, 7, 9])
+ok('20 statsOf(经典组) mean=5、popVar=4、popSd=2、sampVar=32/7', st2.type === 'ok' && st2.mean === 5 && st2.popVar === 4 && st2.popSd === 2 && Math.abs(st2.sampVar - 32 / 7) < 1e-12, JSON.stringify(st2))
+const st3 = calc2.statsOf([1e15 + 1, 1e15 + 2, 1e15 + 3])
+ok('20 statsOf(1e15+1,2,3) 移位防相消：mean 精确、popVar=2/3', st3.type === 'ok' && st3.mean === 1e15 + 2 && Math.abs(st3.popVar - 2 / 3) / (2 / 3) < 1e-12, JSON.stringify(st3))
+const st4 = calc2.statsOf([5, 5, 5])
+ok('20 statsOf(全相同) 方差标准差全 0', st4.type === 'ok' && st4.popVar === 0 && st4.popSd === 0 && st4.sampVar === 0 && st4.sampSd === 0, JSON.stringify(st4))
+const st5 = calc2.statsOf([7])
+ok('20 statsOf(单个) mean=7、popVar=0、样本为 null', st5.type === 'ok' && st5.mean === 7 && st5.popVar === 0 && st5.sampVar === null && st5.sampSd === null, JSON.stringify(st5))
+eq('20 statsOf(空) 报错', calc2.statsOf([]).error, '先加至少一个数据')
+const st7 = calc2.statsOf([-1.5, 2.5])
+ok('20 statsOf(-1.5,2.5) mean=0.5、popVar=4、sampVar=8', st7.type === 'ok' && st7.mean === 0.5 && st7.popVar === 4 && st7.popSd === 2 && st7.sampVar === 8, JSON.stringify(st7))
+eq('20 statsOf(±1e308) 方差真溢出报错', calc2.statsOf([1e308, -1e308]).error, '数字太大，超出精确计算范围')
+const st9 = calc2.statsOf([0.1, 0.2, 0.3])
+ok('20 statsOf(0.1,0.2,0.3) mean≈0.2、popVar≈1/150', st9.type === 'ok' && Math.abs(st9.mean - 0.2) < 1e-16 && Math.abs(st9.popVar - 1 / 150) / (1 / 150) < 1e-9, JSON.stringify(st9))
+eq('20 statsOf(含 NaN) 报错', calc2.statsOf([1, NaN]).error, '有数据不对')
+const t2src = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
+ok('20 tools2 页面已接 statsOf 且菜单含数据统计', t2src.indexOf('statsOf') >= 0 && t2src.indexOf('数据统计') >= 0)
+if (buglog === null) console.log('SKIP 20z BUGLOG 含数据统计条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+else ok('20z BUGLOG 含数据统计条目', buglog.indexOf('数据统计工具新增') >= 0)
 
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)
 if (fail) process.exit(1)

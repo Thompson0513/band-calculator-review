@@ -105,7 +105,18 @@ function seqSolve(kind, a1, x, n) {
   if (!Number.isInteger(n) || n < 1) return { error: '项数 n 要是正整数' }
   let an, Sn
   if (kind === 'ap') {
-    an = a1 + (n - 1) * x
+    // 2026-11-15 第十九轮复审：(n−1)·x 本身可能先溢出——a1 = −1.5e308、
+    // d = 1e308、n = 3 时 2e308 = Infinity，真 an = 5e307（靠加法抵消）。
+    // 直算非有限时按 (n−1) 二分拆开逐段加（apNth）：每段都是数列的真实
+    // 部分和、量级不超真 an；真溢出时拆到 m = 1 仍非有限、照旧报错。
+    const apNth = function (a, d, m) {
+      if (m === 0) return a
+      const direct = a + m * d
+      if (isFinite(direct) || m === 1) return direct
+      if (m % 2 === 0) { const h = apNth(a, d, m / 2); return apNth(h, d, m / 2) }
+      return apNth(a, d, m - 1) + d
+    }
+    an = apNth(a1, x, n - 1)
     // 2026-11-15 第十八轮复审：旧式 n·(a1+an)/2 先乘后除——a1 = 1e304、
     // d = 0、n = 9999 时中间值 9999·2e304 先溢出（真和 9.999e307 本可
     // 表示）。改先算均值再乘 n；a1 + an 本身溢出时用 a1/2 + an/2 兜底
@@ -162,9 +173,38 @@ function solveTriangle(k) {
   // 三个角全给时也要校验内角和（旧版只拦了前两个角，30°+60°+100° 会漏过）。
   if (gIdx.length === 3 && Math.abs(G[0] + G[1] + G[2] - 180) > 1e-6) return { error: '三个角加起来要等于 180°' }
   function finish(s, g) {
-    // 面积按最大边归一化再算（1e200 的边直接相乘会溢出），最后乘回 sc²。
-    const sc = Math.max(s[0], s[1])
-    const area = 0.5 * (s[0] / sc) * (s[1] / sc) * Math.sin(deg2rad(g[2])) * sc * sc
+    // 面积 = ½·s0·s1·sin(C)，按 0.5·s0·(s1·sinC) 的顺序算：两个因子
+    // 都不超过结果量级，中间量溢出 ⟺ 真面积溢出。旧式先归一化再乘回
+    // sc² 有两坑（2026-11-15 第十九轮自查）：sc > 1.3e154 时 sc² 先溢
+    // 出（a=b=1e200、C≈5.7e-149° 的真面积 5e249 被误报溢出）；极端边
+    // 比下 s1/sc 下溢成 0（a=1e308、b=1e-100、C=90° 的面积被算成 0，
+    // 真值 5e207）。
+    let area = 0.5 * s[0] * (s[1] * Math.sin(deg2rad(g[2])))
+    if (area === 0) {
+      // 2026-11-15 第十九轮自查（续）：夹角真值小于最小次正规数时角被
+      // 舍入成 0、sin 式面积跟着成 0，但按边长算的真面积未必是 0（SSS
+      // 1e308/1e308/1e-100 真面积 5e207）。仅当 sin 式给出 0 时改按边
+      // 长走归一化 Kahan 海伦式、乘积下溢再转对数域（与主页 triArea
+      // 同法）；非零面积永不走这里、原断言不变。
+      const srt = [s[0], s[1], s[2]].sort(function (p, q) { return q - p })
+      const x = srt[0], y = srt[1], z = srt[2]
+      const ux = y / x, uz = z / x
+      const au = 0.25 * Math.sqrt(Math.max((1 + (ux + uz)) * (uz - (1 - ux)) * (uz + (1 - ux)) * (1 + (ux - uz)), 0))
+      area = au * x * x
+      if (area === 0) {
+        const lnX = Math.log(x)
+        const lnF1 = lnX + Math.log(1 + y / x + z / x)
+        const dxy = x - y
+        const F2 = z - dxy
+        if (F2 > 0) {
+          const lnF2 = Math.log(F2)
+          const lnF3 = dxy === 0 ? Math.log(z) : (z > dxy ? Math.log(z) + Math.log(1 + dxy / z) : Math.log(dxy) + Math.log(1 + z / dxy))
+          const lnF4 = lnX + Math.log(1 + (y - z) / x)
+          const av = Math.exp(-Math.log(4) + 0.5 * (lnF1 + lnF2 + lnF3 + lnF4))
+          if (av > 0) area = av
+        }
+      }
+    }
     return { a: s[0], b: s[1], c: s[2], A: g[0], B: g[1], C: g[2], area: area }
   }
   function fromSSS(s) {
@@ -195,6 +235,27 @@ function solveTriangle(k) {
       const den = Math.sqrt(Math.max(0, hs)) * Math.sqrt(d[i])
       return 2 * rad2deg(Math.atan2(num, den))
     })
+    // 2026-11-15 第十九轮自查：边比超 1e308 时归一化会把小边吞成 0、
+    // d[i] 跟着塌成 0——(1e308, 1e-100, 1e308) 的 A 角被 atan2(0, 0) 算
+    // 成 0°（真值 90°）、verify 误报「填的量对不上」。任一 d[i] 为 0 时
+    // 改用原始边长在对数域算半角：rawD 用 (hi−s[i])/2 + lo/2 防加法溢
+    // 出、半周长用半值和；普通三角形 d 全正、永不触发，原断言不变。
+    if (d[0] === 0 || d[1] === 0 || d[2] === 0) {
+      const rawD = function (i) {
+        const j = (i + 1) % 3, m = (i + 2) % 3
+        const hi = Math.max(s[j], s[m]), lo = Math.min(s[j], s[m])
+        return (hi - s[i]) / 2 + lo / 2
+      }
+      const rd = [rawD(0), rawD(1), rawD(2)]
+      const hsR = s[0] / 2 + s[1] / 2 + s[2] / 2
+      if (rd.every(function (v) { return v > 0 })) {
+        return finish(s, [0, 1, 2].map(function (i) {
+          const j = (i + 1) % 3, m = (i + 2) % 3
+          const lt = 0.5 * (Math.log(rd[j]) + Math.log(rd[m]) - Math.log(hsR) - Math.log(rd[i]))
+          return 2 * rad2deg(Math.atan(Math.exp(lt)))
+        }))
+      }
+    }
     return finish(s, g)
   }
   // 小数边退化：0.1+0.2 在十进制下恰好等于 0.3，但浮点加法得
@@ -329,20 +390,61 @@ function solveTriangle(k) {
     sols = [finish(s, g)]
   }
   if (!sols) return { error: '还要再填一个量' }
-  const passed = sols.filter(verify)
+  // 2026-11-15 第十九轮自查：边长算成 Infinity/NaN 的解是结果溢出
+  // （如 ASA a=1e308、A=30°、B=60° 的第三边真值 2e308、超双精度上
+  // 限），先按溢出滤掉、全军覆没时报溢出；别让它混进 verify 后误报
+  // 「填的量对不上」（那句是给输入互相矛盾准备的）。
+  const finiteSols = sols.filter(function (sol) { return [sol.a, sol.b, sol.c].every(isFinite) })
+  if (!finiteSols.length) return { error: '数字太大，超出精确计算范围' }
+  const passed = finiteSols.filter(verify)
   if (!passed.length) return { error: '填的量对不上' }
-  // 兜底：解的角必须落在 (0°, 180°)、面积有限——超大边（1e200）算出的
-  // NaN 角 / 溢出面积不许当作解返回。
+  // 兜底：解的角必须落在 [0°, 180°)、三角和为 180、面积有限——超大边
+  // （1e200）算出的 NaN 角 / 溢出面积不许当作解返回。0 角只可能是极端
+  // 边比下真值小于最小次正规数（≈1e-407°）的正确舍入，靠三角和把关。
   const good = passed.filter(function (sol) {
-    return [sol.A, sol.B, sol.C].every(function (g) { return isFinite(g) && g > 0 && g < 180 }) && isFinite(sol.area) && sol.area >= 0
+    return [sol.A, sol.B, sol.C].every(function (g) { return isFinite(g) && g >= 0 && g < 180 }) && Math.abs(sol.A + sol.B + sol.C - 180) < 1e-6 && isFinite(sol.area) && sol.area >= 0
   })
   if (!good.length) return { error: '数字太大，超出精确计算范围' }
   return { type: 'ok', solutions: good }
+}
+
+// 数据统计（2026-11-15 新增，用户点名要方差）：平均数、总体方差 /
+// 标准差（分母 n，初中课内口径）、样本方差 / 标准差（分母 n−1，高中
+// 样本估计口径）。算法用「移位 + Welford 在线累加」：先减首项再累加，
+// 大数扎堆（如 100000001、100000002、100000003）时增量都是小量，不会
+// 像 Σx² 直算法那样灾难性相消；M2 或移位差非有限只在方差真值超双精
+// 度时发生（如 ±1e308 满量程数据、方差约 1e616 本就存不下），报溢出。
+function statsOf(xs) {
+  if (!Array.isArray(xs) || xs.length === 0) return { error: '先加至少一个数据' }
+  for (const v of xs) if (!isFinite(v)) return { error: '有数据不对' }
+  const n = xs.length
+  const K = xs[0]
+  let mean = 0, M2 = 0, cnt = 0
+  for (const v of xs) {
+    const d = v - K
+    if (!isFinite(d)) return { error: '数字太大，超出精确计算范围' }
+    cnt++
+    const delta = d - mean
+    mean += delta / cnt
+    M2 += delta * (d - mean)
+    if (!isFinite(M2)) return { error: '数字太大，超出精确计算范围' }
+  }
+  if (M2 < 0) M2 = 0 // Welford 的 M2 数学上 ≥ 0，负值只可能是舍入尘
+  const meanV = K + mean
+  if (!isFinite(meanV)) return { error: '数字太大，超出精确计算范围' }
+  const popVar = M2 / n
+  const sampVar = n >= 2 ? M2 / (n - 1) : null
+  return {
+    type: 'ok', n: n, mean: meanV,
+    popVar: popVar, popSd: Math.sqrt(popVar),
+    sampVar: sampVar, sampSd: sampVar === null ? null : Math.sqrt(sampVar)
+  }
 }
 
 export default {
   solveRightTri: solveRightTri,
   permComb: permComb,
   seqSolve: seqSolve,
-  solveTriangle: solveTriangle
+  solveTriangle: solveTriangle,
+  statsOf: statsOf
 }
