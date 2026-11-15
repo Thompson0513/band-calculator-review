@@ -620,6 +620,45 @@ function decScaleOf(v) { // 双精度 → { s: 整数（≤15 位）, k: 小数�
   if (digits.length > 15) return null
   return { s: Number(digits), k: k }
 }
+// 十进制串精确比较（2026-11-15 第十八轮复审，与 calc2.js sidesSumCmp 同
+// 口径的本地副本）：(次大 + 最小) 与最大边比大小，纯字符串加法/比较，
+// 无位数上限、不依赖 BigInt。decScaleOf 的 15 位上限会让 (1,1,1e-16)
+// 这类边长组合拿不到精确判定、退回浮点后误判退化。返回 -1/0/1 或 null。
+function decPartsOf(v) {
+  const m = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(v))
+  if (!m || m[1] === '-') return null
+  let digs = (m[2] + (m[3] || '')).replace(/^0+/, '')
+  let kk = (m[3] || '').length - (m[4] ? parseInt(m[4], 10) : 0)
+  if (digs === '') return null
+  if (kk < 0) { digs = digs + '0'.repeat(-kk); kk = 0 }
+  return { d: digs, kk: kk }
+}
+function addDigStr(a, b) {
+  let i = a.length - 1, j = b.length - 1, carry = 0, out = ''
+  while (i >= 0 || j >= 0 || carry) {
+    const sm = (i >= 0 ? a.charCodeAt(i--) - 48 : 0) + (j >= 0 ? b.charCodeAt(j--) - 48 : 0) + carry
+    out = String.fromCharCode(48 + (sm % 10)) + out
+    carry = (sm / 10) | 0
+  }
+  return out
+}
+function cmpDigStr(a, b) {
+  if (a.length !== b.length) return a.length > b.length ? 1 : -1
+  return a === b ? 0 : (a > b ? 1 : -1)
+}
+function triSumCmp(a, b, c) {
+  const parts = []
+  let k = 0
+  for (const v of [a, b, c]) {
+    const p = decPartsOf(v)
+    if (!p) return null
+    if (p.kk > k) k = p.kk
+    parts.push(p)
+  }
+  const scaled = parts.map(function (o) { return o.d + '0'.repeat(k - o.kk) })
+  scaled.sort(function (p, q) { return cmpDigStr(q, p) })
+  return cmpDigStr(addDigStr(scaled[1], scaled[2]), scaled[0])
+}
 function factorExps(n) { // n ≤ 1e12 的素因数指数表（试除，同 simplifySqrt 口径）
   const map = new Map()
   let rad = n
@@ -640,7 +679,15 @@ function triArea(a, b, c) {
     const cand = decs.map(function (d) { return d.s * Math.pow(10, K - d.k) })
     if (cand.every(function (v) { return v <= 9007199254740991 / 4 })) S = cand.sort(function (p, q) { return q - p })
   }
-  if (S !== null) {
+  // 2026-11-15 第十八轮复审：构成判定改走十进制串精确比较（triSumCmp，
+  // 与第二页 solveTriangle 同口径）——旧 S 路径在缩放超安全整数时放弃、
+  // 退回浮点把 (1,1,1e-16) 误判退化；(0.30000000000000004,0.1,0.2) 也
+  // 与第二页口径不一致。S 只保留给下面的精确形计算。
+  const cmp = triSumCmp(a, b, c)
+  if (cmp !== null) {
+    if (cmp < 0) return { error: '不能构成三角形' }
+    if (cmp === 0) return { type: 'degenerate', area: 0 }
+  } else if (S !== null) {
     if (S[1] + S[2] < S[0]) return { error: '不能构成三角形' }
     if (S[1] + S[2] === S[0]) return { type: 'degenerate', area: 0 }
   } else {
@@ -651,7 +698,25 @@ function triArea(a, b, c) {
   // 1e100 时达 1e400 溢出，属中间量溢出而非结果溢出），最后乘回 x²。
   const ux = y / x, uz = z / x
   const areaUnit = 0.25 * Math.sqrt((1 + (ux + uz)) * (uz - (1 - ux)) * (uz + (1 - ux)) * (1 + (ux - uz)))
-  const area = areaUnit * x * x
+  let area = areaUnit * x * x
+  if (area === 0) {
+    // 2026-11-15 第十八轮复审：有效三角形但 z/x 低于双精度下限、归一
+    // 化因子被吞成 0（(1e308,1e308,1e-308) 真面积 0.5 却算出 0）。改
+    // 对数域：ln S = −ln4 + ½·Σln(Fi)，Fi 为 Kahan 四因子（原始边长
+    // 版）；各 ln 用「主项对数 + ln(1 + 次项/主项)」拼，不做会溢出的
+    // 加法、不做会下溢的除法。
+    const lnX = Math.log(x)
+    const lnF1 = lnX + Math.log(1 + y / x + z / x)
+    const dxy = x - y
+    const F2 = z - dxy
+    if (F2 > 0) {
+      const lnF2 = Math.log(F2)
+      const lnF3 = dxy === 0 ? Math.log(z) : (z > dxy ? Math.log(z) + Math.log(1 + dxy / z) : Math.log(dxy) + Math.log(1 + z / dxy))
+      const lnF4 = lnX + Math.log(1 + (y - z) / x)
+      const av = Math.exp(-Math.log(4) + 0.5 * (lnF1 + lnF2 + lnF3 + lnF4))
+      if (av > 0) area = av
+    }
+  }
   if (!isFinite(area)) return { error: '数字太大，超出精确计算范围' }
   let exact = null
   if (S !== null) {

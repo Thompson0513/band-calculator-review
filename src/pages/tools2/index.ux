@@ -176,17 +176,35 @@ function parseCoeff(s) {
   // 与主键盘 evaluate 的分词口径一致。'2e'（2×e）、'e2'（e×2）仍走欧拉
   // 读法（regression-1.6.0 §1d 钉死）；带运算符的长式子也不动。
   if (/^-?(\d+(\.\d*)?|\.\d+)e[+-]?\d+$/i.test(s)) {
-    const mant = s.split(/e/i)[0]
-    if (!needsCheck(mant)) return parseFloat(s)
+    // 2026-11-15 第十八轮复审：旧门只看尾数有效数字——1.23456789012345e17
+    // 尾数恰 15 位就放行，展开成 18 位整数后精度全灭（evaluate 对同一
+    // 字面量抛 precision、页面却照常出根）。改与 evaluate 的 intDigitsOf
+    // 完全同口径：按指数展开取整数位串，≥16 位必须与双精度读数逐字相
+    // 等；移位后仍带小数的（真分数）不设门；展开超 21 位属 ≥1e21 的既
+    // 定近似区、不设门。
     const v = parseFloat(s)
     if (Math.abs(v) >= 1e21) return v
+    const mant = s.split(/e/i)[0]
     const neg = mant.charAt(0) === '-'
     const md = neg ? mant.slice(1) : mant
-    const intLen = md.indexOf('.') >= 0 ? md.indexOf('.') : md.length
-    const digs = md.replace('.', '').replace(/^0+/, '')
-    const point = intLen + parseInt(s.split(/e/i)[1], 10)
-    if (point < digs.length) return v
-    return String(Math.abs(v)) === digs + '0'.repeat(point - digs.length) ? v : NaN
+    const dot = md.indexOf('.')
+    const intPart = dot >= 0 ? md.slice(0, dot) : md
+    const fracPart = dot >= 0 ? md.slice(dot + 1) : ''
+    const raw = intPart + fracPart
+    if (/^0+$/.test(raw)) return v
+    const point = intPart.length + parseInt(s.split(/e/i)[1], 10)
+    if (point <= 0) return v
+    let digs
+    if (point >= raw.length) digs = raw + '0'.repeat(point - raw.length)
+    else {
+      if (!/^0*$/.test(raw.slice(point))) return v
+      digs = raw.slice(0, point)
+    }
+    digs = digs.replace(/^0+/, '') || '0'
+    if (digs.length > 21 || digs.length < 16) return v
+    if (typeof BigInt === 'function') { try { if (BigInt(digs) !== BigInt(Math.abs(v))) return NaN } catch (e) { return NaN } }
+    else if (Math.abs(v).toFixed(0) !== digs) return NaN
+    return v
   }
   if (/^-?(\d+(\.\d*)?|\.\d+)(\/\d+(\.\d*)?|\/\.\d+)?$/.test(s) && !s.split('/').some(needsCheck)) {
     if (s.indexOf('/') >= 0) {
@@ -302,6 +320,10 @@ function fmtDeg(v) {
   return s
 }
 function angSeg(v) {
+  // 2026-11-15 第十八轮复审：极小非零角被 fmtDeg 的两位小数吞成 0、
+  // 又被 1e-9 绝对容差标成「= 0°」（引擎明明算出 5.73e-15°）。小于
+  // 0.005° 的非零角改走 formatDisplay 的科学计数法显示并标 ≈。
+  if (v !== 0 && Math.abs(v) < 0.005) return '≈ ' + FD(v) + '°'
   const s = fmtDeg(v)
   return (Math.abs(v - parseFloat(s)) < 1e-9 ? '= ' : '≈ ') + s + '°'
 }

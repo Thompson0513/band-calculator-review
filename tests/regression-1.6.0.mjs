@@ -47,7 +47,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z 断言按 SKIP 处理 */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -1095,6 +1095,117 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   ok('17e (7,8,9) 面积不变', Math.abs(s789.area - 26.832815729997478) < 1e-12)
   if (buglog === null) console.log('SKIP 17z BUGLOG 含第十七轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
   else ok('17z BUGLOG 含第十七轮条目', buglog.indexOf('第十七轮') >= 0)
+}
+
+// ===== §18 第十八轮外部复审（ChatGPT，2026-11-15） =====
+// 复审对整个仓库重查（不只查 §17 新增），报 6 组问题＋1 项功能完整性；
+// 逐项实跑核实：A–F 全部属实、已修；G（仓库无方差/标准差）属实但从来
+// 没做过这个功能、非缺陷，不在本轮范围。
+// A triArea 自带判定与第二页口径不一致：缩放超安全整数时退回浮点——
+// (1,1,1e-16) 误判退化、(0.30000000000000004,0.1,0.2) 误判退化、
+// (1e308,1e308,1e-308) 误判退化且 z/x 下溢、面积算不出。修法：判定改
+// 走十进制串精确比较 triSumCmp（与 sidesSumCmp 同口径，S 只留给精确
+// 形）；归一化面积为 0 时改对数域（Kahan 四因子取对数）兜底。
+// B parseCoeff 科学计数法门只看尾数位数：1.23456789012345e17 尾数恰
+// 15 位绕过、evaluate 却抛 precision。修法：与 intDigitsOf 完全同口径
+// （展开整数位串、≥16 位逐字比对、真分数不设门、>21 位近似区不设门），
+// 两页 parseCoeff 同步改、18b 守卫逐字一致。
+// C 数列中间溢出：AP 先乘后除（n·(a1+an) 先溢出）、GP 的 pow 与 Σ 先
+// 溢出。修法：AP 先均值后乘 n（a1+an 溢出用 a1/2+an/2 兜底）；GP 的
+// an 直算失败改对数域、Sn 分治累加把首项折进递归（sumPowA）。
+// D angSeg 把极小非零角显示成「= 0°」（fmtDeg 两位小数＋1e-9 绝对容
+// 差）：<0.005° 的非零角改 formatDisplay 科学计数法显示并标 ≈。
+// E 函数图象 drawPlot 二次分支仍直算 b²−4ac（a=1e200、c=−1e200 溢出
+// 丢交点）：改走 solveQuad（与方程页、autoRange 口径统一），顶点 y 溢
+// 出时归一化兜底。
+// F sidesSumCmp 依赖 BigInt（无 BigInt 退回浮点误判）＋calc2 文件头
+// 「禁 BigInt 调用」与 permComb 的守卫调用自相矛盾：sidesSumCmp 改纯
+// 字符串加法/比较（行为与 BigInt 版一致、§17 断言不变）、文件头注释
+// 订正为「禁字面量；构造调用仅限 typeof 守卫＋无 BigInt 兜底处」。
+{
+  const extractFrom = function (src, name) {
+    const start = src.indexOf('function ' + name + '(')
+    let depth = 0, i = src.indexOf('{', start)
+    const from = i
+    for (; i < src.length; i++) {
+      if (src[i] === '{') depth++
+      else if (src[i] === '}') { depth--; if (depth === 0) return src.slice(start, i + 1) }
+    }
+    throw new Error('函数未配平 ' + name)
+  }
+  // 18a triArea 口径与极端面积
+  const ta1 = calc.triArea(1, 1, 1e-16)
+  ok('18a triArea(1,1,1e-16) 非退化、面积 ≈5e-17', ta1.type === 'ok' && Math.abs(ta1.area - 5e-17) / 5e-17 < 1e-9, JSON.stringify(ta1))
+  eq('18a triArea(0.30000000000000004,0.1,0.2) 与第二页同口径判不能构成', calc.triArea(0.30000000000000004, 0.1, 0.2).error, '不能构成三角形')
+  const ta3 = calc.triArea(1e308, 1e308, 1e-308)
+  ok('18a triArea(1e308,1e308,1e-308) 对数域面积 ≈0.5', ta3.type === 'ok' && Math.abs(ta3.area - 0.5) / 0.5 < 1e-9, JSON.stringify(ta3))
+  eq('18a triArea(1,2,3) 真退化仍拒绝', calc.triArea(1, 2, 3).type, 'degenerate')
+  eq('18a triArea(0.1,0.2,0.3) 十进制退化仍拒绝', calc.triArea(0.1, 0.2, 0.3).type, 'degenerate')
+  eq('18a triArea(3,4,5) 精确形不变', JSON.stringify(calc.triArea(3, 4, 5).exact), JSON.stringify({ cn: 6, cd: 1, rad: 1 }))
+  // 18b parseCoeff 科学计数法与 evaluate 同口径
+  ok('18b parseCoeff(1.23456789012345e17) NaN（evaluate 抛 precision）', isNaN(F.parseCoeff('1.23456789012345e17')))
+  ok('18b parseCoeff(-1.23456789012345e17) NaN', isNaN(F.parseCoeff('-1.23456789012345e17')))
+  eq('18b parseCoeff(1.23456789012345e5) 真分数放行', F.parseCoeff('1.23456789012345e5'), 123456.789012345)
+  ok('18b parseCoeff(9.007199254740993e15) 不精确 NaN', isNaN(F.parseCoeff('9.007199254740993e15')))
+  eq('18b parseCoeff(9.007199254740992e15) 精确放行', F.parseCoeff('9.007199254740992e15'), 9007199254740992)
+  eq('18b parseCoeff(1e21) 近似区放行', F.parseCoeff('1e21'), 1e21)
+  eq('18b parseCoeff(1.5e3) 不变', F.parseCoeff('1.5e3'), 1500)
+  eq('18b parseCoeff(5e-1) 不变', F.parseCoeff('5e-1'), 0.5)
+  ok('18b 两页 parseCoeff 逐字一致', extractFrom(ux2, 'parseCoeff') === extractFn('parseCoeff'))
+  // 18c 数列中间溢出
+  const apB = calc2.seqSolve('ap', 1e304, 0, 9999)
+  ok('18c AP(1e304,0,9999) 和 ≈9.999e307 不再误报溢出', apB.type === 'ok' && Math.abs(apB.Sn - 9.999e307) / 9.999e307 < 1e-12, JSON.stringify(apB))
+  const gpB = calc2.seqSolve('gp', 1e-300, 10, 310)
+  ok('18c GP(1e-300,10,310) an ≈1e9、Sn ≈1.111111111e9', gpB.type === 'ok' && Math.abs(gpB.an - 1e9) / 1e9 < 1e-6 && Math.abs(gpB.Sn - 1.111111111e9) / 1.111111111e9 < 1e-9, JSON.stringify(gpB))
+  const gpN = calc2.seqSolve('gp', -1e-300, -10, 310)
+  ok('18c GP(-1e-300,-10,310) 负公比 an ≈1e9、Sn ≈9.090909091e8', gpN.type === 'ok' && Math.abs(gpN.an - 1e9) / 1e9 < 1e-6 && Math.abs(gpN.Sn - 9.090909091e8) / 9.090909091e8 < 1e-6, JSON.stringify(gpN))
+  const gpU = calc2.seqSolve('gp', 1e300, 1e-300, 3)
+  ok('18c GP(1e300,1e-300,3) pow 下溢兜底 an ≈1e-300', gpU.type === 'ok' && Math.abs(gpU.an - 1e-300) / 1e-300 < 1e-6, JSON.stringify(gpU))
+  ok('18c GP(1e300,10,310) 真溢出仍报错', !!calc2.seqSolve('gp', 1e300, 10, 310).error)
+  ok('18c AP(1e308,1e308,2) 真溢出仍报错', !!calc2.seqSolve('ap', 1e308, 1e308, 2).error)
+  eq('18c GP(1,2,10) 和仍精确 1023', calc2.seqSolve('gp', 1, 2, 10).Sn, 1023)
+  eq('18c AP(1,1,100) 和仍精确 5050', calc2.seqSolve('ap', 1, 1, 100).Sn, 5050)
+  // 18d 极小角显示
+  const angSeg = new Function('calc', [extractFrom(ux2, 'FD'), extractFrom(ux2, 'fmtDeg'), extractFrom(ux2, 'angSeg')].join('\n') + '\nreturn angSeg')(calc)
+  eq('18d 极小角走科学计数法显示', angSeg(5.729577951308232e-15), '≈ ' + calc.formatDisplay(5.729577951308232e-15) + '°')
+  ok('18d 极小角不再显示 = 0°', angSeg(1.0000178463e-10).indexOf('= 0°') < 0 && angSeg(1.0000178463e-10).charAt(0) === '≈')
+  eq('18d 普通直角口径不变', angSeg(90), '= 90°')
+  eq('18d 普通角口径不变', angSeg(36.86989764584402), '≈ 36.87°')
+  eq('18d 真零角仍 = 0°', angSeg(0), '= 0°')
+  // 18e drawPlot 复用 solveQuad（整页实例驱动）
+  const inst18 = makeInst()
+  let capCfg = null
+  inst18.buildPlot = function (cfg) { capCfg = cfg; return true }
+  inst18.plotType = 'quad2'
+  inst18.plotVals = { a: '1e200', b: '0', c: '-1e200' }
+  inst18.drawPlot()
+  ok('18e drawPlot(1e200,0,-1e200) 交点 −1/1 不丢', !!capCfg && capCfg.keyPts.some((p) => p.x === -1 && p.y === 0) && capCfg.keyPts.some((p) => p.x === 1 && p.y === 0), capCfg ? JSON.stringify(capCfg.keyPts) : '无 cfg')
+  const inst18b = makeInst()
+  let capCfg2 = null
+  inst18b.buildPlot = function (cfg) { capCfg2 = cfg; return true }
+  inst18b.plotType = 'quad2'
+  inst18b.plotVals = { a: '1', b: '-3', c: '2' }
+  inst18b.drawPlot()
+  ok('18e drawPlot(1,-3,2) 交点 1/2 不变', !!capCfg2 && capCfg2.keyPts.some((p) => p.x === 1 && p.y === 0) && capCfg2.keyPts.some((p) => p.x === 2 && p.y === 0))
+  // 18f 无 BigInt 环境（屏蔽全局 BigInt 重载模块）
+  const savedBigInt2 = globalThis.BigInt
+  globalThis.BigInt = undefined
+  try {
+    const nb2 = (await import('../src/common/calc2.js?nobigint=2')).default
+    const rNb = nb2.solveTriangle({ a: 1, b: 1, c: 1e-16, A: null, B: null, C: null })
+    ok('18f 无 BigInt SSS(1,1,1e-16) 仍非退化', !!rNb.solutions && Math.abs(rNb.solutions[0].C - 5.729577951308232e-15) / 5.729577951308232e-15 < 1e-6, JSON.stringify(rNb))
+    eq('18f 无 BigInt SSS(1,1,2) 仍判退化', nb2.solveTriangle({ a: 1, b: 1, c: 2, A: null, B: null, C: null }).error, '三边退化成一条直线')
+    const nbC = (await import('../src/common/calc.js?nobigint=2')).default
+    const taNb = nbC.triArea(1, 1, 1e-16)
+    ok('18f 无 BigInt triArea(1,1,1e-16) 仍可算', taNb.type === 'ok' && Math.abs(taNb.area - 5e-17) / 5e-17 < 1e-9, JSON.stringify(taNb))
+  } finally {
+    globalThis.BigInt = savedBigInt2
+  }
+  const c2src = readFileSync(new URL('../src/common/calc2.js', import.meta.url), 'utf8')
+  const sscBody = c2src.slice(c2src.indexOf('function sidesSumCmp'), c2src.indexOf('function verify'))
+  ok('18f sidesSumCmp 本体无 BigInt 依赖', sscBody.indexOf('BigInt') < 0)
+  if (buglog === null) console.log('SKIP 18z BUGLOG 含第十八轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+  else ok('18z BUGLOG 含第十八轮条目', buglog.indexOf('第十八轮') >= 0)
 }
 
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)

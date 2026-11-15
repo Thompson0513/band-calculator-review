@@ -667,17 +667,35 @@ function parseCoeff(s) {
   // 与主键盘 evaluate 的分词口径一致。'2e'（2×e）、'e2'（e×2）仍走欧拉
   // 读法（regression-1.6.0 §1d 钉死）；带运算符的长式子也不动。
   if (/^-?(\d+(\.\d*)?|\.\d+)e[+-]?\d+$/i.test(s)) {
-    const mant = s.split(/e/i)[0]
-    if (!needsCheck(mant)) return parseFloat(s)
+    // 2026-11-15 第十八轮复审：旧门只看尾数有效数字——1.23456789012345e17
+    // 尾数恰 15 位就放行，展开成 18 位整数后精度全灭（evaluate 对同一
+    // 字面量抛 precision、页面却照常出根）。改与 evaluate 的 intDigitsOf
+    // 完全同口径：按指数展开取整数位串，≥16 位必须与双精度读数逐字相
+    // 等；移位后仍带小数的（真分数）不设门；展开超 21 位属 ≥1e21 的既
+    // 定近似区、不设门。
     const v = parseFloat(s)
     if (Math.abs(v) >= 1e21) return v
+    const mant = s.split(/e/i)[0]
     const neg = mant.charAt(0) === '-'
     const md = neg ? mant.slice(1) : mant
-    const intLen = md.indexOf('.') >= 0 ? md.indexOf('.') : md.length
-    const digs = md.replace('.', '').replace(/^0+/, '')
-    const point = intLen + parseInt(s.split(/e/i)[1], 10)
-    if (point < digs.length) return v
-    return String(Math.abs(v)) === digs + '0'.repeat(point - digs.length) ? v : NaN
+    const dot = md.indexOf('.')
+    const intPart = dot >= 0 ? md.slice(0, dot) : md
+    const fracPart = dot >= 0 ? md.slice(dot + 1) : ''
+    const raw = intPart + fracPart
+    if (/^0+$/.test(raw)) return v
+    const point = intPart.length + parseInt(s.split(/e/i)[1], 10)
+    if (point <= 0) return v
+    let digs
+    if (point >= raw.length) digs = raw + '0'.repeat(point - raw.length)
+    else {
+      if (!/^0*$/.test(raw.slice(point))) return v
+      digs = raw.slice(0, point)
+    }
+    digs = digs.replace(/^0+/, '') || '0'
+    if (digs.length > 21 || digs.length < 16) return v
+    if (typeof BigInt === 'function') { try { if (BigInt(digs) !== BigInt(Math.abs(v))) return NaN } catch (e) { return NaN } }
+    else if (Math.abs(v).toFixed(0) !== digs) return NaN
+    return v
   }
   if (/^-?(\d+(\.\d*)?|\.\d+)(\/\d+(\.\d*)?|\/\.\d+)?$/.test(s) && !s.split('/').some(needsCheck)) {
     if (s.indexOf('/') >= 0) {
@@ -2954,14 +2972,16 @@ export default {
     if (this.plotType === 'quad2') {
       if (V.a === 0) { bad.call(this, 'a = 0 就不是二次函数了'); return }
       const a = V.a, b = V.b, c = V.c
-      const xv = -b / (2 * a), yv = a * xv * xv + b * xv + c
-      const disc = b * b - 4 * a * c
+      const xv = -b / (2 * a)
+      let yv = a * xv * xv + b * xv + c
+      if (!isFinite(yv)) { const mm = Math.max(Math.abs(a), Math.abs(b), Math.abs(c)) || 1; yv = mm * ((a / mm) * xv * xv + (b / mm) * xv + (c / mm)) }
+      // 2026-11-15 第十八轮复审：交点改走 solveQuad 稳定路径——旧版直算
+      // disc = b²−4ac，a = 1e200、c = −1e200 时溢出成 Infinity、两个交
+      // 点全丢（方程页与「从方程画图」路径第十六轮已修，此处漏网）。
+      const qr = calc.solveQuad(a, b, c)
       const keyPts = [{ x: xv, y: yv }, { x: 0, y: c }]
-      if (disc >= 0) {
-        const sq = Math.sqrt(disc)
-        keyPts.push({ x: (-b + sq) / (2 * a), y: 0 })
-        if (disc > 0) keyPts.push({ x: (-b - sq) / (2 * a), y: 0 })
-      }
+      if (!qr.error && qr.type === 'two') { keyPts.push({ x: qr.x1, y: 0 }); keyPts.push({ x: qr.x2, y: 0 }) }
+      else if (!qr.error && qr.type === 'one') keyPts.push({ x: qr.x, y: 0 })
       const lines = [vertexLine(xv, yv), a > 0 ? '开口向上' : '开口向下', '与 y 轴交点 (0, ' + pvStr(c, 13) + ')']
       cfg = { f: function (x) { return a * x * x + b * x + c }, x0: xv - R, x1: xv + R, title: 'y = ' + TERM(a, 'x²', true) + TERM(b, 'x', false) + TERM(c, '', false), keyPts: keyPts, lines: lines, back: 'plotcfg' }
     } else if (this.plotType === 'lin2') {

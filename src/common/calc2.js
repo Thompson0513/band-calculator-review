@@ -1,12 +1,14 @@
 // 1.6.0 新工具引擎（解直角三角形 / 排列组合 / 数列 / 正弦·余弦定理）。
 // 单独成文件、只被第二页（pages/tools2）引用：主页不加载这部分代码，
 // 控制主页的运行时内存占用（手环 QuickJS 堆上限很紧，见 BUGLOG 1.6.0）。
-// 口径与 calc.js 一致：角度用「度」；全程普通 Number（运行时无 BigInt，
-// 禁 BigInt 字面量与调用）；引擎只给数值与结构化判定，精确形由页面层负责。
+// 口径与 calc.js 一致：角度用「度」；引擎只给数值与结构化判定，精确形
+// 由页面层负责。BigInt 口径（2026-11-15 第十八轮复审订正）：手环运行时
+// 禁 BigInt 字面量（解析期语法错误、整包黑屏）；BigInt() 构造调用仅限
+// typeof 守卫＋无 BigInt 兜底处（permComb 的 gcd 路径）；其余精确判定
+// （三边比较等）一律纯字符串/Number 实现，不依赖 BigInt 是否存在。
 
 // ===== 1.6.0 新增工具引擎（解直角三角形 / 排列组合 / 数列 / 正弦·余弦定理）=====
-// 口径：角度一律用「度」；全程普通 Number（手环运行时无 BigInt，禁 BigInt
-// 字面量与调用）；引擎只给数值与结构化判定，精确形显示由页面层负责。
+// 口径：角度一律用「度」；引擎只给数值与结构化判定，精确形显示由页面层负责。
 
 function deg2rad(d) { return d * Math.PI / 180 }
 function rad2deg(r) { return r * 180 / Math.PI }
@@ -104,21 +106,38 @@ function seqSolve(kind, a1, x, n) {
   let an, Sn
   if (kind === 'ap') {
     an = a1 + (n - 1) * x
-    Sn = n * (a1 + an) / 2
+    // 2026-11-15 第十八轮复审：旧式 n·(a1+an)/2 先乘后除——a1 = 1e304、
+    // d = 0、n = 9999 时中间值 9999·2e304 先溢出（真和 9.999e307 本可
+    // 表示）。改先算均值再乘 n；a1 + an 本身溢出时用 a1/2 + an/2 兜底
+    // （二分在二进制下精确，均值口径不变）。
+    let avg = (a1 + an) / 2
+    if (!isFinite(avg)) avg = a1 / 2 + an / 2
+    Sn = n * avg
   } else {
     an = a1 * Math.pow(x, n - 1)
+    // 2026-11-15 第十八轮复审：pow 先溢出/下溢会连累本可表示的 an——
+    // a1 = 1e-300、q = 10、n = 310 时 10^309 先溢出，真 an = 1e9。直算
+    // 失败时改对数域兜底；真溢出时 exp 仍给 Infinity、照旧报错。
+    if (a1 !== 0 && x !== 0 && (an === 0 || !isFinite(an))) {
+      const la = Math.log(Math.abs(a1)) + (n - 1) * Math.log(Math.abs(x))
+      an = Math.sign(a1) * (x < 0 && (n - 1) % 2 === 1 ? -1 : 1) * Math.exp(la)
+    }
     // 2026-11-15 第十六轮复审：q 接近 1 时 (q^n − 1) 相消——q = 1+1e-12、
     // n = 9999 的和算成 9999（真值 9999.000049989445）。q > 0.5 时改分治
-    // 累加 Σq^i（全正项、无相消、只用 Math.pow，不依赖 expm1/log1p 的
-    // 运行时支持面）：S(n) = S(n/2)·(1 + q^(n/2))（偶）/ S(n−1) + q^(n−1)（奇）。
+    // 累加（全正项、无相消、只用 Math.pow，不依赖 expm1/log1p 的运行时
+    // 支持面）。2026-11-15 第十八轮复审：分治改带首项缩放——旧版先算
+    // Σq^i 再乘 a1，q = 10、n = 310 时 Σ 本身先溢出（真和 ≈1.111e9）；
+    // sumPowA 把 a1 折进递归，每层量级贴着真实部分和走。负公比
+    // q < −1 同理（闭式里的 q^n 先溢出），一并走分治；−1 ≤ q ≤ 0.5 的
+    // 闭式无溢出风险、保持旧口径。
     if (x === 1) Sn = a1 * n
-    else if (x > 0.5) {
-      const sumPow = function (q, nn) {
-        if (nn === 1) return 1
-        if (nn % 2 === 0) { const h = sumPow(q, nn / 2); return h * (1 + Math.pow(q, nn / 2)) }
-        return sumPow(q, nn - 1) + Math.pow(q, nn - 1)
+    else if (x > 0.5 || x < -1) {
+      const sumPowA = function (q, nn, a) {
+        if (nn === 1) return a
+        if (nn % 2 === 0) { const h = sumPowA(q, nn / 2, a); return h + sumPowA(q, nn / 2, a * Math.pow(q, nn / 2)) }
+        return sumPowA(q, nn - 1, a) + a * Math.pow(q, nn - 1)
       }
-      Sn = a1 * sumPow(x, n)
+      Sn = sumPowA(x, n, a1)
     }
     else Sn = a1 * (Math.pow(x, n) - 1) / (x - 1)
   }
@@ -198,32 +217,48 @@ function solveTriangle(k) {
     const srt = scaled.slice().sort(function (p, q) { return q - p })
     return srt[1] + srt[2] === srt[0]
   }
-  // 三边和精确比较（2026-11-15 第十七轮复审）：(次大 + 最小) 与最大边比
-  // 大小，按十进制串用 BigInt 精确缩放，无 15 位/安全整数上限。浮点相等
-  // 会把 (1,1,1e-16) 误判退化（1 + 1e-16 在双精度里圆成 1），旧
-  // sidesDegenerateExact 在缩放 1e16 超安全整数时也会放弃。返回 -1/0/1；
-  // 无 BigInt 或解析失败返回 null，调用方退回旧浮点口径（含上面的函数）。
-  function sidesSumCmp(s) {
-    if (typeof BigInt !== 'function') return null
-    let k = 0
-    const parts = []
-    for (let i = 0; i < 3; i++) {
-      const m = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(s[i]))
-      if (!m) return null
-      let digs = (m[2] + (m[3] || '')).replace(/^0+/, '')
-      let kk = (m[3] || '').length - (m[4] ? parseInt(m[4], 10) : 0)
-      if (digs === '') return null
-      if (kk < 0) { digs = digs + '0'.repeat(-kk); kk = 0 }
-      if (kk > k) k = kk
-      parts.push({ d: digs, kk: kk, neg: m[1] === '-' })
+  // 十进制串工具：边长解析成 { d: 数字串（去前导零）, kk: 小数位 }。
+  function decPartsOf(v) {
+    const m = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(v))
+    if (!m || m[1] === '-') return null
+    let digs = (m[2] + (m[3] || '')).replace(/^0+/, '')
+    let kk = (m[3] || '').length - (m[4] ? parseInt(m[4], 10) : 0)
+    if (digs === '') return null
+    if (kk < 0) { digs = digs + '0'.repeat(-kk); kk = 0 }
+    return { d: digs, kk: kk }
+  }
+  function addDigStr(a, b) { // 两个无前导零的非负整数串相加（逐位进位）
+    let i = a.length - 1, j = b.length - 1, carry = 0, out = ''
+    while (i >= 0 || j >= 0 || carry) {
+      const sm = (i >= 0 ? a.charCodeAt(i--) - 48 : 0) + (j >= 0 ? b.charCodeAt(j--) - 48 : 0) + carry
+      out = String.fromCharCode(48 + (sm % 10)) + out
+      carry = (sm / 10) | 0
     }
-    const scaled = parts.map(function (o) {
-      const v = BigInt(o.d) * BigInt('1' + '0'.repeat(k - o.kk))
-      return o.neg ? -v : v
-    })
-    scaled.sort(function (p, q) { return p > q ? -1 : (p < q ? 1 : 0) })
-    const sum = scaled[1] + scaled[2]
-    return sum > scaled[0] ? 1 : (sum < scaled[0] ? -1 : 0)
+    return out
+  }
+  function cmpDigStr(a, b) { // 无前导零整数串比较：先比长度、再逐字比
+    if (a.length !== b.length) return a.length > b.length ? 1 : -1
+    return a === b ? 0 : (a > b ? 1 : -1)
+  }
+  // 三边和精确比较（2026-11-15 第十七轮复审立、第十八轮改纯字符串）：
+  // (次大 + 最小) 与最大边比大小，按十进制串精确缩放，无 15 位/安全整
+  // 数上限。浮点相等会把 (1,1,1e-16) 误判退化（1 + 1e-16 在双精度里圆
+  // 成 1），旧 sidesDegenerateExact 在缩放 1e16 超安全整数时也会放弃。
+  // 第十七轮版靠 BigInt 缩放——第十八轮复审指出无 BigInt 运行时又退回
+  // 浮点误判；改纯字符串加法/比较后不依赖 BigInt 是否存在。返回
+  // -1/0/1；解析失败返回 null，调用方退回旧浮点口径（含上面的函数）。
+  function sidesSumCmp(s) {
+    const parts = []
+    let k = 0
+    for (let i = 0; i < 3; i++) {
+      const p = decPartsOf(s[i])
+      if (!p) return null
+      if (p.kk > k) k = p.kk
+      parts.push(p)
+    }
+    const scaled = parts.map(function (o) { return o.d + '0'.repeat(k - o.kk) })
+    scaled.sort(function (p, q) { return cmpDigStr(q, p) })
+    return cmpDigStr(addDigStr(scaled[1], scaled[2]), scaled[0])
   }
   function verify(sol) {
     for (let i = 0; i < 3; i++) {
@@ -237,8 +272,8 @@ function solveTriangle(k) {
   if (nS === 3) {
     const s = [S[0], S[1], S[2]]
     const srt = s.slice().sort(function (p, q) { return q - p })
-    // 判定优先走十进制精确比较（sidesSumCmp）；拿不到（无 BigInt 等）
-    // 才退回浮点比较 + sidesDegenerateExact 的旧口径。
+    // 判定优先走十进制精确比较（sidesSumCmp，纯字符串、不依赖
+    // BigInt）；解析失败才退回浮点比较 + sidesDegenerateExact 的旧口径。
     const cmp = sidesSumCmp(s)
     if (cmp !== null) {
       if (cmp < 0) return { error: '三边不能构成三角形' }
