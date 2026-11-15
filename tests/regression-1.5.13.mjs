@@ -54,12 +54,14 @@ function loadPage(storageImpl) {
   globalThis.__storage = storageImpl
   globalThis.__vibrator = { vibrate() {} }
   globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210' }) } }
+  globalThis.__router = { push() {}, back() {} }
   globalThis.__calc = calc
   globalThis.__paykey = paykeyMod
   script = script
     .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
     .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
     .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
     .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
     .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
     .replace('export default', 'module.exports =')
@@ -91,7 +93,7 @@ function feedCalc(expr, fracOn) {
 
 
 // ---------- A. 多尺度识别：小系数高次项＋大常数 ----------
-{ const L = eqSolveLines('0.0000000001x^2+x=1000000000'); ok('A1 二次不再误判一次（' + JSON.stringify(L) + '）', L.length === 4 && L[1].indexOf('判别式') === 0 && L[2].indexOf('916,079,783') >= 0 && L[3].indexOf('−10,916,079,783') >= 0) }
+{ const L = eqSolveLines('0.0000000001x^2+x=1000000000'); ok('A1 二次不再误判一次（' + JSON.stringify(L) + '）', L.length === 4 && L[1].indexOf('判别式') === 0 && L[2].indexOf('−10,916,079,783') >= 0 && L[3].indexOf('916,079,783') >= 0) }
 { const L = eqSolveLines('0.0000000001x^2=1000000000'); ok('A2 无一次项的小系数二次（' + JSON.stringify(L) + '）', L.length === 4 && L[2].indexOf('3,162,277,660') >= 0) }
 eq('A3 三次报不支持（不再给假解 1e9）', eqSolveLines('x+0.0000000001x^3=1000000000')[0], '只支持一元一次 / 二次方程')
 eq('A4 守卫：x=0.1 仍只给一个根', eqSolveLines('x=0.1')[1], 'x = 1/10 = 0.1')
@@ -133,8 +135,8 @@ eq('D13 主界面乘积报错文案', feedCalc('123456789×123456789').resDisp.i
 // ---------- E. 阶乘精确性 ----------
 eq('E1 22! 精确值', E('22!'), 1124000727777607680000)
 eq('E2 20! 精确值', E('20!'), 2432902008176640000)
-throws('E3 23! 报错（双精度装不下精确值）', () => E('23!'))
-throws('E4 25! 报错', () => E('25!'))
+ok('E3 23! 给约数（1.6.0 自查 B5 修订：≥1e21 的阶乘给约数，不再报错）', isFinite(E('23!')) && Math.abs(E('23!') / 2.585201673888498e22 - 1) < 1e-12)
+ok('E4 25! 给约数（1.6.0 自查 B5 修订）', isFinite(E('25!')) && Math.abs(E('25!') / 1.5511210043330986e25 - 1) < 1e-12)
 
 // ---------- F. 精确整数不再误标 ≈ ----------
 eq('F1 13 位整数分数模式是 =', feedCalc('1234567890123+0', true).resDisp, '= 1234567890123')

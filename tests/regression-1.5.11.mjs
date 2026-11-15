@@ -38,12 +38,14 @@ let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
 globalThis.__storage = storageImpl
 globalThis.__vibrator = { vibrate() {}}
 globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210'})}}
+  globalThis.__router = { push() {}, back() {} }
 globalThis.__calc = calc
 globalThis.__paykey = paykeyMod
 script = script
 .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
 .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
 .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
 .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
 .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
 .replace('export default', 'module.exports =')
@@ -66,21 +68,21 @@ return inst
   const inst = makeInst(); inst.unlocked = true
   inst.eqExpr = '100000000x+0.0000001x^2=100000000'; inst.eqExpr2 = ''; inst.eqSolve()
   ok('A 原例判二次双根（got=' + JSON.stringify(inst.eqLines) + '）', inst.eqLines.length >= 4 && inst.eqLines[2].indexOf('x1') === 0)
-  const x2line = inst.eqLines.find(l => l.indexOf('x2') === 0) || ''
-  const x2v = parseFloat(x2line.split('=')[1].replace(/,/g, '').replace(/\u2212/g, '-').trim())
-  ok('A 大根相对误差 <2%（got=' + x2line + '）', Math.abs(x2v + 1e15) / 1e15 < 0.02)
+  const x1line = inst.eqLines.find(l => l.indexOf('x1') === 0) || ''
+  const x1v = parseFloat(x1line.split('=')[1].replace(/,/g, '').replace(/\u2212/g, '-').trim())
+  ok('A 大根相对误差 <2%（1.6.0 自查 B4 修订：大根现为 x1）（got=' + x1line + '）', Math.abs(x1v + 1e15) / 1e15 < 0.02)
   ok('A 表头不再显示 0x²（got=' + inst.eqLines[0] + '）', inst.eqLines[0].indexOf('0x²') < 0 && inst.eqLines[0].indexOf('×10⁻⁸') >= 0) // 1.5.17 修订：课本式（原判 e−8/e-8）
 }
 {
   const inst = makeInst(); inst.unlocked = true
   inst.eqExpr = 'x^2-3x+2=0'; inst.eqExpr2 = ''; inst.eqSolve()
-  ok('A 常规二次不回退', inst.eqLines.some(l => l.indexOf('x1 = 2') === 0) && inst.eqLines.some(l => l.indexOf('x2 = 1') === 0))
+  ok('A 常规二次不回退（1.6.0 自查 B4 修订：x1<x2）', inst.eqLines.some(l => l.indexOf('x1 = 1') === 0) && inst.eqLines.some(l => l.indexOf('x2 = 2') === 0))
   const inst2 = makeInst(); inst2.unlocked = true
   inst2.eqExpr = '0.0000001x^3=0.0000008'; inst2.eqExpr2 = ''; inst2.eqSolve()
   eq('A 三次小系数仍拒绝', inst2.eqLines[0], '只支持一元一次 / 二次方程')
   const inst3 = makeInst(); inst3.unlocked = true
   inst3.eqExpr = '0.0000001x^2-0.0000003x+0.0000002=0'; inst3.eqExpr2 = ''; inst3.eqSolve()
-  ok('A 小系数真二次不回退', inst3.eqLines.some(l => l.indexOf('x1 = 2') === 0))
+  ok('A 小系数真二次不回退（1.6.0 自查 B4 修订：x1 为小根 1）', inst3.eqLines.some(l => l.indexOf('x1 = 1') === 0))
 }
 
 // ---------- B. 常数等式容差 ----------

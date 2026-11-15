@@ -176,7 +176,7 @@
         <div class="plot-btn" onclick="openPlot('lin')"><text class="plot-btn-t">看图象</text></div>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm" for="{{quadKeys}}" onclick="linPad($item.v)">
+        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="linPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
         </div>
       </div>
@@ -208,7 +208,7 @@
         <div class="plot-btn" onclick="openPlot('quad')"><text class="plot-btn-t">看图象（抛物线）</text></div>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm" for="{{quadKeys}}" onclick="quadPad($item.v)">
+        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="quadPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
         </div>
       </div>
@@ -249,7 +249,7 @@
         <text class="q-line" for="{{sLines}}">{{' ' + $item}}</text>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm key-sys" for="{{quadKeys}}" onclick="sysPad($item.v)">
+        <div class="key key-num key-sm key-sys key-c5" for="{{quadKeys}}" onclick="sysPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
         </div>
       </div>
@@ -368,7 +368,30 @@
         <text class="q-line" for="{{tLines}}">{{' ' + $item}}</text>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm" for="{{quadKeys}}" onclick="triPad($item.v)">
+        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="triPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 圆 ===== -->
+    <div class="view" if="{{view === 'circ'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">圆</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <text class="q-formula">输入半径 r，算周长和面积</text>
+      <div class="q-fields">
+        <div class="q-field q-field-w q-field-on">
+          <text class="q-fl">r</text><text class="q-fv" style="font-size: {{cFvPx}}px;">{{cr ? cr : '0'}}</text>
+        </div>
+      </div>
+      <div class="q-res">
+        <text class="q-line" for="{{cLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="circPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
         </div>
       </div>
@@ -397,7 +420,7 @@
         <text class="q-line" for="{{eqLines}}">{{' ' + $item}}</text>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num eqkey {{eqShow2 ? 'eqkey-s' : ''}} {{$item.cls ? $item.cls : ''}} {{$item.kcls ? $item.kcls : ''}}" for="{{eqKeys}}" onclick="eqPad($item.v)">
+        <div class="key key-num eqkey eqkey-c5 {{eqShow2 ? 'eqkey-s' : ''}} {{$item.cls ? $item.cls : ''}} {{$item.kcls ? $item.kcls : ''}}" for="{{eqKeys}}" onclick="eqPad($item.v)">
           <image if="{{$item.it}}" src="/common/glyphs/{{$item.v}}-dark.png" style="width: 10px; height: 20px;"></image><image if="{{$item.v === '²'}}" src="/common/glyphs/xsq-dark.png" style="width: 17px; height: 19px;"></image><text if="{{!$item.it && $item.v !== '²'}}" class="key-t {{$item.cls ? 'eqgo-t' : 'key-t-num'}}" style="font-size: {{$item.fs}}px;">{{$item.label}}</text>
         </div>
       </div>
@@ -428,7 +451,7 @@
         <div class="plot-btn" onclick="drawPlot"><text class="plot-btn-t">画图象</text></div>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm key-xs" for="{{quadKeys}}" onclick="plotPad($item.v)">
+        <div class="key key-num key-sm key-xs key-c5" for="{{quadKeys}}" onclick="plotPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 20px;">{{$item.label}}</text>
         </div>
       </div>
@@ -530,20 +553,26 @@
 import storage from '@system.storage'
 import vibrator from '@system.vibrator'
 import device from '@system.device'
+import router from '@system.router'
 import calc from '../../common/calc'
 import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'
 
+// 体积红线（1.6.0 实测）：页面脚本 + calc.js 合计必须 ≤190KB——设备运行时对 JS
+// 总量有加载上限，超限整页加载失败、开机黑屏（详见 BUGLOG 1.6.0 条）。长篇设计
+// 说明已迁入 BUGLOG.md，代码内只留短注；regression-1.6.0 §9 有体积守卫断言。
 const UNIT_KEYS = [
   { v: '7', label: '7' }, { v: '8', label: '8' }, { v: '9', label: '9' }, { v: 'back', label: '←' },
   { v: '4', label: '4' }, { v: '5', label: '5' }, { v: '6', label: '6' }, { v: 'C', label: 'C' },
   { v: '1', label: '1' }, { v: '2', label: '2' }, { v: '3', label: '3' }, { v: 'neg', label: '±' },
   { v: '0', label: '0' }, { v: '00', label: '00' }, { v: '.', label: '.' }, { v: 'ok', label: '带回' }
 ]
+// 系数键盘（1.6.0）：只有右括号没左括号是刻意的——左括号唯一来源是 √ 键自带的
+// '√('，) 负责关根号（√3/2 与 √(2/3) 靠它区分）；未关的根号解析时自动补齐。
 const QUAD_KEYS = [
-  { v: '7', label: '7' }, { v: '8', label: '8' }, { v: '9', label: '9' }, { v: 'back', label: '←' },
-  { v: '4', label: '4' }, { v: '5', label: '5' }, { v: '6', label: '6' }, { v: 'C', label: 'C' },
-  { v: '1', label: '1' }, { v: '2', label: '2' }, { v: '3', label: '3' }, { v: 'neg', label: '±' },
-  { v: '0', label: '0' }, { v: '/', label: '/' }, { v: '.', label: '.' }, { v: 'ok', label: '»' }
+  { v: '7', label: '7' }, { v: '8', label: '8' }, { v: '9', label: '9' }, { v: 'back', label: '←' }, { v: 'C', label: 'C' },
+  { v: '4', label: '4' }, { v: '5', label: '5' }, { v: '6', label: '6' }, { v: 'sqrt', label: '√' }, { v: 'pi', label: 'π' },
+  { v: '1', label: '1' }, { v: '2', label: '2' }, { v: '3', label: '3' }, { v: 'e', label: 'e' }, { v: ')', label: ')' },
+  { v: '0', label: '0' }, { v: '.', label: '.' }, { v: '/', label: '/' }, { v: 'neg', label: '±' }, { v: 'ok', label: '»' }
 ]
 const INT_KEYS = [
   { v: '7', label: '7' }, { v: '8', label: '8' }, { v: '9', label: '9' }, { v: 'back', label: '←' },
@@ -552,29 +581,26 @@ const INT_KEYS = [
   { v: '0', label: '0' }, { v: '00', label: '00' }, { v: 'ok', label: '»' }, { v: 'ok2', label: '»' }
 ]
 const EQ_KEYS = [
-  { v: '7', label: '7', fs: 20 }, { v: '8', label: '8', fs: 20 }, { v: '9', label: '9', fs: 20 }, { v: 'back', label: '←', fs: 20 },
-  { v: '4', label: '4', fs: 20 }, { v: '5', label: '5', fs: 20 }, { v: '6', label: '6', fs: 20 }, { v: 'C', label: 'C', fs: 20 },
-  { v: '1', label: '1', fs: 20 }, { v: '2', label: '2', fs: 20 }, { v: '3', label: '3', fs: 20 }, { v: 'x', label: 'x', fs: 20, it: true },
-  { v: '0', label: '0', fs: 20 }, { v: '.', label: '.', fs: 20 }, { v: '/', label: '/', fs: 20 }, { v: '²', label: '²', fs: 24, kcls: 'eqsup-k' },
-  { v: '+', label: '+', fs: 20 }, { v: '−', label: '−', fs: 20 }, { v: '×', label: '×', fs: 22 }, { v: 'y', label: 'y', fs: 20, it: true },
-  { v: '(', label: '(', fs: 20 }, { v: ')', label: ')', fs: 20 }, { v: '=', label: '=', fs: 20 }, { v: 'solve', label: '解', fs: 20, cls: 'eqgo' }
+  { v: '7', label: '7', fs: 20 }, { v: '8', label: '8', fs: 20 }, { v: '9', label: '9', fs: 20 }, { v: 'back', label: '←', fs: 20 }, { v: 'C', label: 'C', fs: 20 },
+  { v: '4', label: '4', fs: 20 }, { v: '5', label: '5', fs: 20 }, { v: '6', label: '6', fs: 20 }, { v: 'x', label: 'x', fs: 20, it: true }, { v: 'y', label: 'y', fs: 20, it: true },
+  { v: '1', label: '1', fs: 20 }, { v: '2', label: '2', fs: 20 }, { v: '3', label: '3', fs: 20 }, { v: '√(', label: '√', fs: 20 }, { v: 'π', label: 'π', fs: 20 },
+  { v: '0', label: '0', fs: 20 }, { v: '.', label: '.', fs: 20 }, { v: '/', label: '/', fs: 20 }, { v: '²', label: '²', fs: 24, kcls: 'eqsup-k' }, { v: 'e', label: 'e', fs: 20 },
+  { v: '+', label: '+', fs: 20 }, { v: '−', label: '−', fs: 20 }, { v: '×', label: '×', fs: 22 }, { v: '(', label: '(', fs: 20 }, { v: ')', label: ')', fs: 20 },
+  { v: '=', label: '=', fs: 20 }, { v: 'solve', label: '解', fs: 20, cls: 'eqgo' }, { v: '^', label: '^', fs: 20 }, { v: '%', label: '%', fs: 20 }, { v: '°', label: '°', fs: 20 }
 ]
-// 输入方程的一边 → 可求值源码：补隐含乘号、代入 x 的值（t 为 null 时保留 x，不可直接求值）
 function eqSideSrc(side, t, u) {
   let s = side.replace(/×/g, '*').replace(/·/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
-  s = s.replace(/([0-9.)²xy])(?=[xy(])/g, '$1*')
-  s = s.replace(/([)²xy])(?=[0-9])/g, '$1*')
+  s = s.replace(/([0-9.)²xyπe])(?=[xy(π√e])/g, '$1*')
+  s = s.replace(/([)²xyπe])(?=[0-9πe])/g, '$1*')
   if (t !== null && t !== undefined) s = s.replace(/x/g, '(' + t + ')')
   if (u !== null && u !== undefined) s = s.replace(/y/g, '(' + u + ')')
   return s
 }
-// 标准形多项式文本：a、b、c → 如「x² + 2x − 3」（系数 1 省略、0 的项跳过）
 function fmtPoly(a, b, c, compact) {
   const terms = []
   const push = function (coef, sym) {
     if (coef === 0) return
     const mag = Math.abs(coef)
-    // 非零系数被 DP 显示成 0 时改科学计数（1.5.11）：1e-7 级系数旧版在「整理成」行显示 0x²，与实际按二次求解矛盾；外壳改课本式（1.5.17）
     const magStr = DP(mag) === '0' ? calc.sciStr(mag.toPrecision(2)) : DP(mag)
     const body = sym ? (mag === 1 ? sym : magStr + sym) : magStr
     terms.push({ neg: coef < 0, body: body })
@@ -587,20 +613,14 @@ function fmtPoly(a, b, c, compact) {
 }
 const FN_TOKENS = ['sin(', 'cos(', 'tan(', 'log(', 'ln(', '√(', '³√(', 'abs(']
 const VAL_END = '0123456789)πe%²!°'
-// 历史读回调代次（1.5.16）：loadHist 发起时领号，saveHist（clearHist 的保存也
-// 走它）时递增作废全部在途读——旧版迟到的读回调会把已清空的旧记录在内存里
-// 复活、或把刚存的新记录冲回旧快照（第十一轮复审以可控延迟的假 storage 时序
-// 模拟实证；真机存储回调是否会如此排序未验证，列真机验收项）
 let histGen = 0
 
-// 系数格编辑：返回新值，或 'NEXT' 表示切到下一格
 function editNum(cur, v, allowDot) {
   if (v === 'C') return ''
   if (v === 'back') return cur.slice(0, -1)
   if (v === 'neg') return cur.indexOf('-') === 0 ? cur.slice(1) : '-' + cur
   if (v === 'ok' || v === 'ok2') return 'NEXT'
   if (v === '/') {
-    // 分数输入：最多一个 /，且分子不能为空（'' 或 '-' 时不许）
     if (cur.indexOf('/') >= 0 || cur === '' || cur === '-') return cur
     return cur + '/'
   }
@@ -608,89 +628,291 @@ function editNum(cur, v, allowDot) {
     if (!allowDot || cur.indexOf('.') >= 0 || cur.indexOf('/') >= 0) return cur
     return (cur === '-' ? '-0' : (cur || '0')) + '.'
   }
-  // 前导零：'0' 或 '-0' 后面再输数字直接替换，别留 '05' 这种
   if (cur === '0' || cur === '-0') {
     if (v === '0' || v === '00') return cur
     if (/^[1-9]$/.test(v)) return (cur.charAt(0) === '-' ? '-' : '') + v
   }
-  // 分母前导零：'1/0' 后面输非零数字替换掉 0，别留 '1/05'
   if (/\/0$/.test(cur) && /^[1-9]$/.test(v)) return cur.slice(0, -1) + v
-  if (cur.replace(/[^0-9]/g, '').length >= 9) return cur
+  // 2026-11-15 自查 C4：'00' 按 +2 位算 9 位上限（8 位 + '00' 不再顶到 10 位）。
+  if (cur.replace(/[^0-9]/g, '').length + (v === '00' ? 2 : 1) > 9) return cur
   return cur + v
 }
-// 系数解析：支持分数写法 '1/2'、'-3/4'，按分数精确算，不先转小数
+// 系数式子规范化：补隐含乘号/未闭合括号后交 calc.evaluate；纯数字/分数由
+// parseCoeff 走旧快路径（1.4.1 口径逐字守恒，regression-1.4.17 抽取直测）。
+function coeffSrc(s) {
+  let t = String(s).replace(/−/g, '-')
+  t = t.replace(/√(?!\()/g, '√(')
+  t = t.replace(/([0-9.)πe])(?=[√πe(])/g, '$1*')
+  t = t.replace(/([πe)])(?=[0-9])/g, '$1*')
+  let open = 0
+  for (const ch of t) { if (ch === '(') open++; else if (ch === ')') open-- }
+  while (open > 0) { t += ')'; open-- }
+  return t
+}
 function parseCoeff(s) {
   if (s === '' || s === '-') return NaN
-  if (s.indexOf('/') >= 0) {
-    const p = s.split('/')
-    if (p.length !== 2) return NaN
-    const n = parseFloat(p[0]), d = parseFloat(p[1])
-    if (isNaN(n) || isNaN(d) || d === 0) return NaN
-    return n / d
+  // 2026-11-15 自查 F11：整串就是科学计数法时按科学计数法读（1e21 → 10²¹），
+  // 与主键盘 evaluate 的分词口径一致。'2e'（2×e）、'e2'（e×2）仍走欧拉
+  // 读法（regression-1.6.0 §1d 钉死）；带运算符的长式子也不动。
+  if (/^-?(\d+(\.\d*)?|\.\d+)e[+-]?\d+$/i.test(s)) return parseFloat(s)
+  if (/^-?(\d+(\.\d*)?|\.\d+)(\/\d+(\.\d*)?|\/\.\d+)?$/.test(s)) {
+    if (s.indexOf('/') >= 0) {
+      const p = s.split('/')
+      if (p.length !== 2) return NaN
+      const n = parseFloat(p[0]), d = parseFloat(p[1])
+      if (isNaN(n) || isNaN(d) || d === 0) return NaN
+      return n / d
+    }
+    return parseFloat(s)
   }
-  return parseFloat(s)
+  try {
+    const v = calc.evaluate(coeffSrc(s))
+    return isFinite(v) ? v : NaN
+  } catch (e) { return NaN }
 }
-// 系数框留空按 0 算（教材里不写的项就是 0，如 x²+3x 的常数项）；单独一个 '-' 是正在输入、仍算没填
 function parseCoeff0(s) { return s === '' ? 0 : parseCoeff(s) }
+function editCoeff(cur, v) {
+  if (v === 'C') return ''
+  if (v === 'back') return cur.slice(0, -1)
+  // 2026-11-15 自查 C4：± 只在“加号”时受 20 字上限拦，解负号（变短）不拦。
+  if (v === 'neg') {
+    if (cur.indexOf('-') === 0) return cur.slice(1)
+    if (cur.length >= 20) return cur
+    return '-' + cur
+  }
+  if (v === 'ok' || v === 'ok2') return 'NEXT'
+  const last = cur.slice(-1)
+  if (v === 'sqrt') return cur.length >= 19 ? cur : cur + '√('
+  if (v === 'pi') return cur.length >= 20 ? cur : cur + 'π'
+  if (v === 'e') return cur.length >= 20 ? cur : cur + 'e'
+  if (v === ')') return cur.length >= 20 ? cur : cur + ')'
+  if (v === '/') {
+    if (cur === '' || cur === '-' || last === '/' || last === '(') return cur
+    if (cur.indexOf('(') < 0 && cur.indexOf('/') >= 0) return cur
+    // 2026-11-15 自查 C4：'/' 也按追加后总长查 20 字上限。
+    if (cur.length >= 20) return cur
+    return cur + '/'
+  }
+  if (v === '.') {
+    if (last === ')' || last === 'π' || last === 'e') return cur
+    // 2026-11-15 自查 C4：'.' 也按追加后总长查 20 字上限。
+    if (cur.length >= 20) return cur
+    if (cur.indexOf('(') < 0 && (cur.indexOf('.') >= 0 || cur.indexOf('/') >= 0)) return cur
+    let seg = ''
+    for (let i = cur.length - 1; i >= 0; i--) {
+      const ch = cur[i]
+      if ((ch >= '0' && ch <= '9') || ch === '.') seg = ch + seg
+      else break
+    }
+    if (seg.indexOf('.') >= 0) return cur
+    if (cur === '' || cur === '-' || last === '/' || last === '(') return cur + '0.'
+    return cur + '.'
+  }
+  if (cur === '0') return v === '0' ? cur : v
+  if (cur === '-0') return v === '0' ? cur : '-' + v
+  let seg = ''
+  for (let i = cur.length - 1; i >= 0; i--) {
+    const ch = cur[i]
+    if ((ch >= '0' && ch <= '9') || ch === '.') seg = ch + seg
+    else break
+  }
+  if (seg === '0' && v !== '0') return cur.slice(0, -1) + v
+  // 2026-11-15 自查 C4：按追加后总长查上限（'00' 一次进两位也拦得住）。
+  if (cur.length + v.length > 20) return cur
+  return cur + v
+}
+// 单项式符号层（1.6.0）：{qn,qd,pi,rad} 表示 (qn/qd)·π^pi·√rad，推不出返回
+// null；数值路径永远先行，符号形只用于显示与精确判定、且必经数值自检。
+function monoRed(qn, qd) {
+  if (qn === 0) return [0, 1]
+  const g = gcd2(Math.abs(qn), Math.abs(qd)) || 1
+  qn /= g; qd /= g
+  if (qd < 0) { qn = -qn; qd = -qd }
+  return [qn, qd]
+}
+function monoMul(m1, m2) {
+  if (!m1 || !m2) return null
+  if (m1.qn === 0 || m2.qn === 0) return { qn: 0, qd: 1, pi: 0, rad: 1 }
+  let qn = m1.qn * m2.qn, qd = m1.qd * m2.qd
+  if (!Number.isSafeInteger(qn) || !Number.isSafeInteger(qd)) return null
+  const r0 = monoRed(qn, qd); qn = r0[0]; qd = r0[1]
+  const radP = m1.rad * m2.rad
+  if (radP > 1e12) return null
+  const sq = calc.simplifySqrt(radP)
+  if (sq.error) return null
+  qn *= sq.coef
+  if (!Number.isSafeInteger(qn)) return null
+  const r1 = monoRed(qn, qd)
+  return { qn: r1[0], qd: r1[1], pi: m1.pi + m2.pi, rad: sq.rad }
+}
+function monoInv(m) {
+  if (!m || m.qn === 0) return null
+  let qn = m.qd, qd = m.qn * m.rad
+  if (!Number.isSafeInteger(qd)) return null
+  const r = monoRed(qn, qd)
+  return { qn: r[0], qd: r[1], pi: -m.pi, rad: m.rad }
+}
+function monoDiv(m1, m2) { return monoMul(m1, monoInv(m2)) }
+function monoSub(m1, m2) {
+  if (!m1 || !m2) return null
+  if (m1.qn === 0) return { qn: -m2.qn, qd: m2.qd, pi: m2.pi, rad: m2.rad }
+  if (m2.qn === 0) return m1
+  if (m1.pi !== m2.pi || m1.rad !== m2.rad) return null
+  const qn = m1.qn * m2.qd - m2.qn * m1.qd, qd = m1.qd * m2.qd
+  if (!Number.isSafeInteger(qn) || !Number.isSafeInteger(qd)) return null
+  const r = monoRed(qn, qd)
+  return { qn: r[0], qd: r[1], pi: m1.pi, rad: m1.rad }
+}
+function monoSqrt(m) {
+  if (!m || m.qn < 0 || m.rad !== 1 || m.pi % 2 !== 0) return null
+  if (m.qn === 0) return { qn: 0, qd: 1, pi: 0, rad: 1 }
+  const t = m.qn * m.qd
+  if (!Number.isSafeInteger(t) || t > 1e12) return null
+  const sq = calc.simplifySqrt(t)
+  if (sq.error) return null
+  const r = monoRed(sq.coef, m.qd)
+  return { qn: r[0], qd: r[1], pi: m.pi / 2, rad: sq.rad }
+}
+function parseMono(s) {
+  if (typeof s !== 'string' || s === '' || s === '-') return null
+  const t = s.replace(/−/g, '-')
+  let i = 0
+  function parseAtom() {
+    const ch = t[i]
+    if (ch === 'π') { i++; return { qn: 1, qd: 1, pi: 1, rad: 1 } }
+    if (ch === '√') {
+      if (t[i + 1] !== '(') return null
+      i += 2
+      const inner = parseExpr()
+      if (!inner || t[i] !== ')') return null
+      i++
+      return monoSqrt(inner)
+    }
+    if (ch === '(') {
+      i++
+      const inner = parseExpr()
+      if (!inner || t[i] !== ')') return null
+      i++
+      return inner
+    }
+    if ((ch >= '0' && ch <= '9') || ch === '.') {
+      let j = i, dot = false
+      while (j < t.length && ((t[j] >= '0' && t[j] <= '9') || t[j] === '.')) {
+        if (t[j] === '.') { if (dot) break; dot = true }
+        j++
+      }
+      const mm = /^(\d*)(?:\.(\d*))?$/.exec(t.slice(i, j))
+      i = j
+      if (!mm || (!mm[1] && !mm[2])) return null
+      const digits = (mm[1] + (mm[2] || '')).replace(/^0+/, '')
+      if (digits === '') return { qn: 0, qd: 1, pi: 0, rad: 1 }
+      if (digits.length > 15) return null
+      const r = monoRed(Number(digits), Math.pow(10, (mm[2] || '').length))
+      return { qn: r[0], qd: r[1], pi: 0, rad: 1 }
+    }
+    return null
+  }
+  function parseProduct() {
+    let m = parseAtom()
+    if (!m) return null
+    while (i < t.length && t[i] !== '/' && t[i] !== ')') {
+      const a2 = parseAtom()
+      if (!a2) return null
+      m = monoMul(m, a2)
+      if (!m) return null
+    }
+    return m
+  }
+  function parseExpr() {
+    let m = parseProduct()
+    if (!m) return null
+    if (t[i] === '/') {
+      i++
+      const d = parseProduct()
+      if (!d || d.qn === 0) return null
+      m = monoDiv(m, d)
+      if (!m) return null
+    }
+    return m
+  }
+  let neg = false
+  if (t[0] === '-') { neg = true; i = 1 }
+  const m = parseExpr()
+  if (!m || i !== t.length) return null
+  if (neg) m.qn = -m.qn
+  return m
+}
+function monoOf(s) { return s === '' ? { qn: 0, qd: 1, pi: 0, rad: 1 } : parseMono(s) }
+function monoStr(m) {
+  if (!m) return null
+  if (m.qn === 0) return '0'
+  const sup = { '2': '²', '3': '³', '4': '⁴' }
+  const piPart = function (p) { return p === 1 ? 'π' : 'π' + (sup[String(p)] || ('^' + p)) }
+  const numParts = [], denParts = []
+  const aq = Math.abs(m.qn)
+  if (aq !== 1) numParts.push(String(aq))
+  if (m.rad > 1) numParts.push('√' + m.rad)
+  if (m.pi > 0) numParts.push(piPart(m.pi))
+  if (m.qd !== 1) denParts.push(String(m.qd))
+  if (m.pi < 0) denParts.push(piPart(-m.pi))
+  if (!numParts.length) numParts.push('1')
+  let out = numParts.join('')
+  if (denParts.length) out += '/' + (denParts.length > 1 ? '(' + denParts.join('') + ')' : denParts[0])
+  return (m.qn < 0 ? '−' : '') + out
+}
 function FD(x) { return calc.formatDisplay(x) }
-// 结果串过长时逐步降精度重排，保证一行显示完、永不省略（主流计算器的做法）
 function fitResStr(v, cap) {
   let s = calc.formatDisplay(v)
   if (s.length <= cap) return s
-  // 纯整数太长：改科学计数法，别把精确整数四舍五入
   if (/^-?\d+$/.test(calc.formatPlain(v))) {
     let p = 10
-    // 课本式外壳（1.5.17）：长度按转换后的 ×10 上标串量——新写法比 e 记法
-    // 长 1–2 字，同 cap 下可能比旧版少 1 位有效数字（分级降精度，保住 cap）
     let sci = dm(calc.sciStr(v.toPrecision(p)))
     while (sci.length > cap && p > 5) { p--; sci = dm(calc.sciStr(v.toPrecision(p))) }
-    // 负号过 dm 统一（1.5.16）：toPrecision 直出 ASCII '-'，须在 sciStr 之后
-    // 再过 dm（指数已是上标 ⁻、dm 不会误伤）
     return sci
   }
-  let p = 12
-  while (s.length > cap && p > 7) { p--; s = calc.formatDisplay(Number(v.toPrecision(p))) }
-  return s
+  // 2026-11-15 自查 F4：降 p 不再缩短就停，保住最精确形。带千分位逗号的大数
+  // 降 p 根本不缩短字符串（逗号＋尾零恒 17 字），旧代码一路碾到 7 位还返回
+  // 17 字，白丢精度；现在从 p=15 往下试，只在“一下省 ≥2 字”或“已压进 cap”
+  // 时才换更短的形：1234567890123.5 → 1,234,567,890,124（13 位，与 12 位形
+  // 同宽、多一位准）；9999999999999.5 的进位形只比精确串短 1 字（且看着像
+  // 整数），宁可留精确串 = 9,999,999,999,999.5。1/3 这类每步都变短的仍走
+  // 原路降到 cap 内。cap 自此是版式提示，真守卫是 fitResPx 的字号档（E1 已证）。
+  let best = s
+  for (let p = 15; p > 7 && s.length > cap; p--) {
+    const t = calc.formatDisplay(Number(v.toPrecision(p)))
+    if (t.length < best.length && (best.length - t.length >= 2 || t.length <= cap)) best = t
+    s = t
+  }
+  return best
 }
-// 结果行字号档：按显示串长度（含「= 」）选档；旁边有分数切换钮时再压一档
 function fitResPx(disp, withChip) {
   const len = disp.length
-  let px = len <= 12 ? 50 : (len <= 15 ? 38 : (len <= 18 ? 30 : 24))
+  // 2026-11-15 自查 E1：50px 下每字符约 25~26px，11 字符（278px）刚好塞进约 301px 可用宽，
+  // 12 字符（= 12,345,678）实测在真机 336px 屏上截掉末尾（模拟器复现：只见「= 12,345,」）。
+  // 故 50px 档只给 ≤11 字符，12~15 字符降到 38px（约 19px/字，15 字约 288px）。
+  let px = len <= 11 ? 50 : (len <= 15 ? 38 : (len <= 18 ? 30 : 24))
   if (withChip && px > 30) px = 30
-  // 旁边有分数切换钮时，长结果串再压一档字号，免得和钮一起挤出显示区
   if (withChip && len > 13 && px > 24) px = 24
   return px
 }
-// fitResStr 对 0.00x 这类小数收不到很短（前导零占位）：再按有效数字硬收一轮
 function hardFit(v, cap) {
   let s = fitResStr(v, cap)
   let p = 6
   while (s.length > cap && p >= 2) { s = calc.formatDisplay(Number(v.toPrecision(p))); p-- }
   return s
 }
-// 答案行排版：有精确分数（分母≠1）时同行并列「名 = 分数 符号 小数」（精确在前），
-// 分数与小数之间的符号走 eqSign 回读口径：显示的小数与原值严格相等用「=」（如 1/2 = 0.5），
-// 被收精度截断/四舍五入了才用「≈」（如 4/27 ≈ 0.148148148148）；
-// 小数按剩余宽度收精度保整行 ≤ maxLen；没有精确分数时沿用「名 符号 小数」
 function ansStr(name, v, maxLen) {
   const fr = calc.toFraction(v)
   if (fr && fr.d !== 1) {
-    // 分数只是容差内近似（如 1.0000000002÷3 认作 1/3）时连接号用 ≈，不许冒充精确
-    //（1.5.12，ChatGPT 第八份报告实证）；精确分数维持「名 = 分数 = 小数」
     const fs = (name ? name + (calc.fracIsExact(v, fr) ? ' = ' : ' ≈ ') : (calc.fracIsExact(v, fr) ? '= ' : '≈ ')) + dm(fr.n + '/' + fr.d)
     const dec = hardFit(v, Math.max(maxLen - fs.length - 3, 4))
     if (fs.length + 3 + dec.length <= maxLen) return fs + ' ' + calc.eqSign(v, dec) + ' ' + dec
-    // 分数串本身太长（极端大分子/分母）：硬塞必然被截断，退回纯小数行
   }
   return (name ? name + ' ' : '') + calc.eqSign(v) + ' ' + fitResStr(v, maxLen - (name ? name.length + 3 : 2))
 }
-// 复数根行：实部有精确分数时并列给出（虚部是 √Δ 的无理数、没有分数，只给小数）；
-// 分数与实部小数之间的符号同样走 eqSign 回读口径（实部小数完整显示用「=」、被收精度了用「≈」）；
-// 整行 ≤30 字守住不截断纪律：放不下先收虚部、再收实部小数位数，仍放不下就不加分数
 function cplxStr(name, r, sign) {
   const csg = (calc.eqSign(r.re) === '=' && calc.eqSign(r.im) === '=') ? '=' : '≈'
   const fr = calc.toFraction(r.re)
-  // 实部分数只认严格精确的（1.5.12）：近似分数不在复数行里冒充精确，退回纯小数行
   if (fr && fr.d !== 1 && calc.fracIsExact(r.re, fr)) {
     const fs = dm(fr.n + '/' + fr.d)
     const build = function (re, im) { return name + ' ' + csg + ' ' + fs + ' ' + calc.eqSign(r.re, re) + ' ' + re + ' ' + sign + ' ' + im + 'i' }
@@ -702,8 +924,6 @@ function cplxStr(name, r, sign) {
   }
   return name + ' ' + csg + ' ' + fitResStr(r.re, 11) + ' ' + sign + ' ' + fitResStr(r.im, 10) + 'i'
 }
-// ---------- 1.5.4 根式精确形（对齐卡西欧 fx-991 方程模式：无理根先给根式精确形、小数在后） ----------
-// 显示层有理数运算（{n, d}，d > 0 已约分）：任一步超 JS 安全整数就返回 null，调用方整题回退小数显示，绝不硬凑
 function gcd2(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { const t = a % b; a = b; b = t } return a }
 function rMul(p, q) {
   if (!p || !q) return null
@@ -721,10 +941,6 @@ function rSub(p, q) {
   const g = gcd2(n, d) || 1
   return { n: n / g, d: d / g }
 }
-// 系数恢复有理数（走 calc.toFraction 的精确门）并精确算出 Δ；恢复失败/超限返回 null
-// exact（1.5.16）：三个系数是否都被 fracIsExact 判为严格恢复——toFraction 的
-// 1e-10 容差会把 0.3333333334 认成 1/3，旧版 quadExact 只查非 null 就按 1/3
-// 构造根式并以等号给出（第十一轮复审实证）；恢复不严格时调用方改 ≈ 或回退
 function quadExact(a, b, c) {
   const A = calc.toFraction(a), B = calc.toFraction(b), C = calc.toFraction(c)
   if (!A || !B || !C || A.n === 0) return null
@@ -733,8 +949,6 @@ function quadExact(a, b, c) {
   const exact = calc.fracIsExact(a, A) && calc.fracIsExact(b, B) && calc.fracIsExact(c, C)
   return { A: A, B: B, D: D, exact: exact }
 }
-// √|Δ| 精确化简：Δ = n/d（已约分）→ √|Δ| = s√m / d（m 无平方因子）；
-// N = |n|·d 超安全整数或超化简上限（1e12）返回 null；m == 1 表示 |Δ| 是完全平方（根是有理数，不走根式）
 function sqrtRat(D) {
   const N = Math.abs(D.n) * D.d
   if (!Number.isSafeInteger(N) || N > 1e12) return null
@@ -742,16 +956,12 @@ function sqrtRat(D) {
   if (r.error) return null
   return { s: r.coef, m: r.rad, d: D.d }
 }
-// 根的最简形态 (P ± Q√m)/R 文本（Q > 0、R > 0）：P == 0 不带括号、R == 1 不写分母、Q == 1 不写系数
 function radTerm(P, Q, m, R, sign) {
   const rad = Q === 1 ? '√' + m : Q + '√' + m
-  // 负号统一用 −（1.5.15）：旧版根式串内部用 ASCII '-'，与同行小数部分的 − 混排
   if (P === 0) return (sign < 0 ? '−' : '') + rad + (R > 1 ? '/' + R : '')
   const inner = (P < 0 ? '−' + (-P) : '' + P) + (sign > 0 ? '+' : '−') + rad
   return R === 1 ? inner : '(' + inner + ')/' + R
 }
-// Δ > 0 且非完全平方时，把两根组装成 (P ± Q√m)/R 并约分到最简（分子分母同除 gcd、分母取正）；
-// 与 solveQuad 浮点根逐一数值自检，对不上（采样噪声/恢复失真）整组作废返回 null
 function quadRadStrs(a, b, c, x1, x2) {
   const E = quadExact(a, b, c)
   if (!E || E.D.n <= 0) return null
@@ -768,8 +978,6 @@ function quadRadStrs(a, b, c, x1, x2) {
   if (R < 0) { P = -P; Q = -Q; R = -R }
   Q = Math.abs(Q)
   if (Q === 0 || R <= 0) return null
-  // 根集合 {(P+Q√m)/R, (P−Q√m)/R} 与分母符号翻转无关，但哪根对应 x1 取决于 A 的符号：
-  // 逐一数值配对自检（对不上整组作废），不靠符号约定硬猜
   const sqm = Math.sqrt(sq.m)
   const vPlus = (P + Q * sqm) / R, vMinus = (P - Q * sqm) / R
   const tol = function (u, v) { return Math.abs(u - v) <= 1e-9 * Math.abs(v) + 1e-12 }
@@ -778,24 +986,24 @@ function quadRadStrs(a, b, c, x1, x2) {
   if (tol(vMinus, x1) && tol(vPlus, x2)) return { x1: sMinus, x2: sPlus, exact: E.exact }
   return null
 }
-// 根式答案行：精确形在前、同行并列小数（连接号走 eqSign 回读口径）；
-// 塞不下退到只剩精确形（精确形本身就是完整答案），再不行回落 ansStr 纯小数行
 function radAnsStr(name, v, rad, maxLen, exact) {
   if (!rad) return ansStr(name, v, maxLen)
-  // 系数只是容差内恢复（exact === false）时根式不是原方程的严格精确解，
-  // 连接号按 eqSign 同口径改 ≈（1.5.16）；严格恢复维持等号
   const fs = (name ? name + (exact === false ? ' ≈ ' : ' = ') : (exact === false ? '≈ ' : '= ')) + rad
   const dec = hardFit(v, Math.max(maxLen - fs.length - 3, 4))
   if (fs.length + 3 + dec.length <= maxLen) return fs + ' ' + calc.eqSign(v, dec) + ' ' + dec
   if (fs.length <= maxLen) return fs
   return ansStr(name, v, maxLen)
 }
-// 复数根虚部根式：im = √(−Δ)/(2|A|)，化简成 (Q√m)/R 最简形态；虚部有理（m == 1）或恢复失败返回 null；
-// 与浮点 im 数值自检，对不上作废
+function symAnsStr(name, v, sym, maxLen) {
+  if (!sym) return ansStr(name, v, maxLen)
+  const fs = (name ? name + ' = ' : '= ') + sym
+  const dec = hardFit(v, Math.max(maxLen - fs.length - 3, 4))
+  if (fs.length + 3 + dec.length <= maxLen) return fs + ' ' + calc.eqSign(v, dec) + ' ' + dec
+  if (fs.length <= maxLen) return fs
+  return ansStr(name, v, maxLen)
+}
 function quadImRad(a, b, c, imVal) {
   const E = quadExact(a, b, c)
-  // 系数恢复不严格时虚部根式同样不是严格精确形（1.5.16）：整条回退 cplxStr
-  // 小数行（其连接号走 eqSign），不以等号形式给出近似根式
   if (!E || E.D.n >= 0 || E.exact === false) return null
   const sq = sqrtRat(E.D)
   if (!sq || sq.m < 2) return null
@@ -807,8 +1015,6 @@ function quadImRad(a, b, c, imVal) {
   if (Math.abs(Q * Math.sqrt(sq.m) / R - imVal) > 1e-9 * Math.abs(imVal) + 1e-12) return null
   return radTerm(0, Q, sq.m, R, 1)
 }
-// 复数根根式行：实部精确形（分数/整数）+ 虚部根式形同行（两部皆精确，连接用「=」），
-// 整行 ≤30 字守住不截断纪律；实部恢复不出或放不下返回 null，调用方回落 cplxStr
 function cplxRadStr(name, r, imRad, sign) {
   const fr = calc.toFraction(r.re)
   if (!fr) return null
@@ -816,8 +1022,6 @@ function cplxRadStr(name, r, imRad, sign) {
   const line = name + ' = ' + reStr + ' ' + sign + ' ' + imRad + 'i'
   return line.length <= 30 ? line : null
 }
-// 主界面分数切换钮文案：另一形式足够短时直接显示它本身，让小数与分数同屏（点钮仍是切换）
-// 看小数侧：主行分数 ≤12 字且小数串（11 字口径）≤11 字才直显，否则回落文字钮防同行溢出
 function fracChipText(fracOn, frac, v, mainIsFrac) {
   if (!frac) return '看分数'
   const fs = dm(frac.n + '/' + frac.d)
@@ -828,21 +1032,14 @@ function fracChipText(fracOn, frac, v, mainIsFrac) {
   }
   return fs.length <= 7 ? fs : '看分数'
 }
-// 图象信息行行宽估算（像素）：汉字/全角按 19、空格按 5、其余按 10，另加模板补的首空格 5；
-// 与真机验过的 30 字复数根行（估算 ≈275px）对齐，整行 ≤300 不被省略号截断。
-// 上标指数字符（⁰-⁹、⁻，1.5.17）是窄字形，与普通半角同按 10 估算，别按全角 19 虚增
 function linePx(s) {
   let w = 5
   for (const ch of s) w += (ch === ' ') ? 5 : ((ch.charCodeAt(0) > 255 && ch !== '−' && '⁰¹²³⁴⁵⁶⁷⁸⁹⁻'.indexOf(ch) < 0) ? 19 : 10)
   return w
 }
-// 图象信息行里的单个值：有精确分数（分母≠1）时并列「分数 符号 小数」，符号走 eqSign 回读口径
-// （完整显示用「=」、收了精度用「≈」）；cap 是这个值允许占的字符数，放不下退回 DP 原样——
-// 整数、无理数也走 DP，呈现口径不变
 function pvStr(v, cap) {
   const fr = calc.toFraction(v)
   if (fr && fr.d !== 1) {
-    // 近似分数带 ≈ 前缀（1.5.12，与 ansStr 同口径），多占 1 字、宽度计算同步算入
     const fs = ((calc.fracIsExact(v, fr) ? '' : '≈') + fr.n + '/' + fr.d).replace(/-/g, '−')
     const room = cap - fs.length - 3
     if (room >= 4) {
@@ -852,8 +1049,6 @@ function pvStr(v, cap) {
   }
   return DP(v)
 }
-// 顶点行：两个坐标都可能带分数，按行宽逐级收（两边轮流让位）；
-// 接受门：先求估算 ≤300；实在不行才放宽到「不宽于同一值的 DP 原行」（带分数不比现状更宽就算安全）；都不行退回 DP 行
 function vertexLine(xv, yv) {
   const dpLine = '顶点 (' + DP(xv) + ', ' + DP(yv) + ')'
   const grades = [[11, 12], [11, 8], [8, 12], [9, 9], [7, 7]]
@@ -865,12 +1060,9 @@ function vertexLine(xv, yv) {
   }
   return dpLine
 }
-// 抛物线与 x 轴交点行（解方程入口）：两个根同行，逐级收行宽（接受门同顶点行），放不下退回 DP 行；
-// rads（1.5.4，可选）是两根的根式精确形：有根式时并列（精确形在前、小数在后），塞不下只给根式形，再不行回落 pvStr
 function rootsLine(r1, r2, rads) {
   const fmt = function (v, rad, cap) {
     if (rad) {
-      // 系数容差内恢复（rads.exact === false）时根式前加 ≈，不冒充严格精确形（1.5.16）
       const radTxt = (rads && rads.exact === false) ? '≈' + rad : rad
       const room = cap - radTxt.length - 3
       if (room >= 4) {
@@ -883,23 +1075,27 @@ function rootsLine(r1, r2, rads) {
   }
   const dpLine = '与 x 轴交点 x = ' + DP(r1) + '、' + DP(r2)
   const grades = [[12, 12], [12, 8], [8, 12], [9, 9], [7, 7]]
+  // 2026-11-15 自查 F2：系数不精确时根式本身带 ≈（rads.exact===false），
+  // 两根都只有裸根式的行等于没给数——宁可回落纯小数行（dpLine），也不接受
+  // 这种行。精确系数的裸根式行（1.5.4 钉死：2±√3、√3/3）不受影响。
+  const needDec = !!(rads && rads.exact === false)
+  const hasDec = function (s) { return s.indexOf(' ≈ ') >= 0 || s.indexOf(' = ') >= 0 }
   for (const relaxed of [false, true]) {
     for (const g of grades) {
-      const s = '与 x 轴交点 x = ' + fmt(r1, rads ? rads.x1 : null, g[0]) + '、' + fmt(r2, rads ? rads.x2 : null, g[1])
+      const f1 = fmt(r1, rads ? rads.x1 : null, g[0])
+      const f2 = fmt(r2, rads ? rads.x2 : null, g[1])
+      if (needDec && !hasDec(f1) && !hasDec(f2)) continue
+      const s = '与 x 轴交点 x = ' + f1 + '、' + f2
       if (linePx(s) <= 300 || (relaxed && linePx(s) <= linePx(dpLine))) return s
     }
   }
   return dpLine
 }
-// 一次方程图象的根行：根有分数时并列给出——此时去掉「（就是方程的解）」后缀，
-// 否则整行必被截断；根没有分数时保持原行不变
 function linRootLine(root) {
   const s = '与 x 轴交点 x = ' + pvStr(root, 15)
   if (s.indexOf('/') >= 0) return s
   return '与 x 轴交点 x = ' + DP(root) + '（就是方程的解）'
 }
-// 三角函数信息行：周期行不变；振幅在振幅处给分数、小数在同行的最高/最低处出现（同一值同行双显），
-// 整行放不下时逐级收最高/最低的小数精度，再放不下退回原行；|A| ≥ 10000 的 DA 分支行短，振幅处直接并列
 function trigInfoLines(A) {
   const aA = Math.abs(A)
   const lines = ['周期 360°（一个完整波形）']
@@ -939,15 +1135,7 @@ function unitPxOf(s) {
   const n = String(s === null || s === undefined ? '' : s).length
   return n <= 9 ? 27 : (n <= 12 ? 22 : (n <= 15 ? 18 : (n <= 19 ? 15 : 13)))
 }
-// ---------- 单位换算「带回计算」：带回的是换算过程式，不是光秃秃的结果 ----------
-// 过程式经 calc.evaluate 求值必须与 calc.convertUnit 一致（浮点容差内）：
-// 纯比率类按 输入×比率 / 输入÷(1/比率) 组式，比率用 formatPlain 口径（12 位有效数字）写；
-// 温度按 convertUnit 同路组仿射式（先归摄氏再转目标，系数用教材形 1.8=9/5）。
-// 极端量级的数字写课本式（1.5.17）：sciStr 把 formatPlain 的 e 记法换成
-// ×10 上标形，过程式回主算式后由 tokenizer 折叠识别、求值等值（见 calc.js）
 function unitNumStr(x) { return dispNum(calc.sciStr(calc.formatPlain(x))) }
-// 倒数是否「干净」到适合写成 ÷ 形式：无科学计数法、小数尾巴 ≤4 位（如 2.54、30.48）；
-// 2.20462262185 这类长尾不算干净，回退 ×比率原值（如磅→千克 ×0.45359237，因子本身精确）。
 function unitRatioClean(x) {
   const s = calc.formatPlain(x)
   if (s === '错误' || s === '溢出' || s.indexOf('e') >= 0 || s.indexOf('E') >= 0) return false
@@ -973,14 +1161,10 @@ function buildUnitProc(catIdx, fromId, toId, v) {
   if (unitRatioClean(inv)) return vs + '÷' + unitNumStr(inv)
   return vs + '×' + unitNumStr(r)
 }
-// 把过程式并入主表达式：空式子直接放；非空按 Ans 插入的隐含乘法口径追加并整体加括号，运算顺序不变
 function unitCarryExpr(curExpr, proc) {
   if (!curExpr) return proc
   const wrapped = '(' + proc + ')'
   const last = curExpr.slice(-1)
-  // 末尾 '.' 视同数值结尾（1.5.16）：'5.' 是完整数值（求值即 5），旧版 VAL_END
-  // 不含 '.'、被当成运算符后直接拼括号，生成 '5.(2÷1000)' 无效式（第十一轮
-  // 复审实证）；补 × 后 '5.×(2÷1000)' 可正常算出 0.01
   return (last && (VAL_END.indexOf(last) >= 0 || last === '.')) ? curExpr + '×' + wrapped : curExpr + wrapped
 }
 function termNum(a) {
@@ -990,9 +1174,6 @@ function termNum(a) {
 function fmtPolyFit(a, b, c) {
   let head = '整理成 ' + fmtPoly(a, b, c) + ' = 0'
   if (head.length <= 26) return head
-  // 压缩取整绝不许把非零系数舍成 0（1.5.12）：0.004 旧版被 r2 舍成 0、二次项在
-  // 表头凭空消失，显示的方程与实际求解的方程不一致（ChatGPT 第八份报告实证）。
-  // 非零被舍成 0 时保留原值，交给 fmtPoly 自己按 DP/科学计数显示
   const keep = function (v, r) { return (v !== 0 && r === 0) ? v : r }
   const r2 = function (v) { return Math.round(v * 100) / 100 }
   head = '整理成 ' + fmtPoly(keep(a, r2(a)), keep(b, r2(b)), keep(c, r2(c))) + ' = 0'
@@ -1003,17 +1184,12 @@ function fmtPolyFit(a, b, c) {
   return '整理成 ' + fmtPoly(a, b, c, true) + ' = 0'
 }
 function DA(x) { if (Math.abs(x) < 10000) return DP(x); return calc.sciStr(x.toPrecision(3)).replace(/-/g, '−') }
-// 科学计数串去尾零：'1.0000000e-7' → '1e-7'、'1.2300000e+20' → '1.23e+20'
 function trimSci(s) {
   const m = /^(-?\d)(?:\.(\d+))?(e.*)?$/.exec(s)
   if (!m) return s
   const frac = (m[2] || '').replace(/0+$/, '')
   return m[1] + (frac ? '.' + frac : '') + (m[3] || '')
 }
-// 算式回显渲染（1.5.17）：内部式子里的「×10^指数」段（×10 幂键产物，手打的
-// 独立 10^ 段同样处理）渲染成课本式「×10＋上标指数」；指数还没输完（无数字）
-// 时保留 '^' 与 '−' 原样，表示正在输入指数（同卡西欧回显习惯），有一位数字
-// 即转上标。只渲染 exprDisp 与历史 expr 回显，内部存储/求值一律不动
 const SUPD = '⁰¹²³⁴⁵⁶⁷⁸⁹'
 function sciEcho(s) {
   s = String(s)
@@ -1046,24 +1222,11 @@ function DP(x) {
     if (t.length > 12) t = r.toPrecision(8)
     return calc.sciStr(t).replace(/^-/, '−')
   }
-  // 身份塌缩时改自适应精度（1.5.16）：四位小数口径下，非零小量被舍成 0
-  //（交点 (0, −1×10⁻⁷) 显示成 (0, 0)）、底数 1.00000001 被舍成 1（标题
-  // y = 1ˣ 是另一个函数），第十一轮复审实证。这两种塌缩才改走原值：字符串
-  // ≤12 字直接用原值，更长或科学计数形用 8 位有效数字去尾零；其余值（如
-  // 顶点 −0.5159）维持 4 位小数的既定简洁口径不变。出口统一过 sciStr
-  //（1.5.17）：e 记法改课本式、负号只换首位（指数已是上标 ⁻）
   let t = String(x)
   if (t.length > 12 || t.includes('e')) t = trimSci(x.toPrecision(8))
   return calc.sciStr(t).replace(/^-/, '−')
 }
-// 把纯文本结果放回算式时只换开头的负号：1.5.17 前科学计数是指数负号
-//（1e-7）必须是 ASCII '-' 才可再求值；课本式（1×10⁻⁷）的指数是上标 ⁻、
-// 与尾数负号互不干扰，求值端 tokenizer 有折叠识别（见 calc.js），本函数
-// 口径不变
 function dispNum(plain) { return String(plain).replace(/^-/, '−') }
-// 显示串负号统一成 −（1.5.15，与 calc.formatDisplay 同口径）：分数串是页面用原始
-// 数字拼的、不经 formatDisplay，单独过一遍；1.5.17 起科学计数指数已是上标 ⁻、
-// 串里不再有需要保护的 ASCII 指数负号，e 后保护只剩存量旧串会走到，保留不动
 function dm(s) {
   s = String(s)
   let out = ''
@@ -1095,9 +1258,6 @@ function autoRange(type, V) {
   return 8
 }
 function isRealCalc(expr) {
-  // 科学计数法只在「数字后跟 e」时才剥离（1.5.14）：旧版无条件剥 e±数字，把
-  // 常数 e 的 e+1、e−1 也当成指数吞掉，这类计算因此漏记历史（ChatGPT 第十份报告实证）
-  // 课本式（1.5.17）：单位带回的 ×10 上标段同样先剥离，免得纯数值带回被误判有运算符
   const t = String(expr).replace(/\d[eE][+\-−]?\d+/g, '').replace(/×10[⁻]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, '')
   return /[+\-−×÷^%!²°√]|sin\(|cos\(|tan\(|log\(|ln\(|abs\(/.test(t)
 }
@@ -1115,7 +1275,6 @@ function fmtHistTime(ts) {
   if (diff === 2) return '前天 ' + hm
   return (d.getFullYear() !== now.getFullYear() ? d.getFullYear() + '年' : '') + (d.getMonth() + 1) + '月' + d.getDate() + '日'
 }
-// 坐标轴单位长度分档：按量程自动选 1/2/5×10^n，函数大档位大、函数小档位小
 function niceStep(span, target) {
   const raw = span / target
   const mag = Math.pow(10, Math.floor(Math.log10(raw)))
@@ -1125,41 +1284,15 @@ function niceStep(span, target) {
 }
 function fmtTick(v, step) {
   const s = calc.formatPlain(v)
-  // e 形短串也要走科学计数分支（1.5.17 盘点发现的存量泄漏）：formatPlain
-  // 对 1e-7 这类值直接给 '1e-7'（仅 4 字），旧版命中 ≤6 字分支原样返回、
-  // 刻度上出现 e 记法；新版一律改课本式
   if (s.length <= 6 && s.indexOf('e') < 0 && s.indexOf('E') < 0) return dispNum(s)
-  // 大/小量级刻度改科学计数（1.5.15）：极端窗口下全位整数标签长达 21 字，塞进
-  // 24–26px 的刻度格必然重叠成一团看不清；用 toExponential 强制指数形——
-  // toPrecision 对 1e-5 量级会退回小数长串
-  // 有效数字位数随刻度步长自适应（1.5.16）：1.5.15 一律 2 位，在 1e9 量级、
-  // 步长 2e-4 的窗口下标签末位单位（1e8）远粗于步长，10 个刻度全塌成同一个
-  // '1e+9'（第十一轮复审实证）。位数按「末位单位 ≤ 步长」反推：d ≥ E+1−log10(step)
-  //（E 为量级指数），无步长信息时维持 2 位；上限 15 位（双精度可靠十进制
-  // 位数内；1e9 整数边界处 E 跳变、需 14 位才分得开，13 位不够）；尾零去掉。
-  // 课本式外壳（1.5.17）：常规标签如 −2.5×10²⁰（9 字，比 e 记法长 1 字）；
-  // 标签长度口径 1.5.18 修订（B-03）：「×10」是 ×、1、0 共 3 字而非 2 字，
-  // 15 位尾数＋3 位上标指数的极端标签实际达 23 字，靠函数尾部的降位循环
-  // 兜住 22 字硬上限（见下）
   let digs = 2
   if (typeof step === 'number' && step > 0 && isFinite(step) && v !== 0 && isFinite(v)) {
     const E = Math.floor(Math.log10(Math.abs(v)))
     digs = Math.min(15, Math.max(2, Math.ceil(E + 1 - Math.log10(step))))
-    // 极端尺度短标签封顶（1.5.19 同版修订二，B-03 实际布局半）：|E|≥10
-    // （|v|≥1e10 或 0<|v|<1e-10）时有效数字封顶 5 位。H 例旧版按步长反推
-    // 到 15 位：Y 标签 −2.499999995×10²⁰（18 字）/−2.49999999499999×10²⁰
-    // （23 字）、X 标签 15 字，塞进 24–26px 定宽标签框逐字竖排、互相重叠
-    // 不可读（velasim 实测）。封顶后 −2.5×10²⁰ 式短标签（≤14 字）；该尺
-    // 度下相邻刻度在 5 位精度不可分辨时，由 buildPlot 的去重翻步长与减
-    // 量兜底收口（标签宁少勿重复）。中等尺度（|E|<10）维持 1.5.16 的步
-    // 长自适应（1e9 量级、步长 2e-4 的相邻可分辨用例不受影响）
     if (Math.abs(E) >= 10 && digs > 5) digs = 5
   }
   const render = function () { return dispNum(calc.sciStr(trimSci(v.toExponential(digs - 1)))) }
   let out = render()
-  // 长度硬上限 22 字（1.5.18，B-03）：fmtTick(−Number.MAX_VALUE, 1e292)
-  // 旧版给 23 字（第十二轮复审实证）；超限时逐级降有效位数重渲染，
-  // digs=2 时最长 11 字（符号 1＋尾数 3＋「×10」3＋上标 ≤4），必然达标
   while (out.length > 22 && digs > 2) { digs--; out = render() }
   return out
 }
@@ -1184,7 +1317,7 @@ const PLOT_TYPES = [
 export default {
   data: {
     view: 'calc',
-    // 计算器
+    backto: '',
     expr: '',
     resDisp: '0',
     resPx: 44,
@@ -1223,6 +1356,11 @@ export default {
       { id: 'sqrt', ico: '√', name: '根号化简', desc: '√12 = 2√3，一眼看懂' },
       { id: 'gcd', ico: '公', name: '公约数 · 公倍数', desc: '最大公约数与最小公倍数' },
       { id: 'tri', ico: '△', name: '三角形面积', desc: '输入三条边，算面积' },
+      { id: 'circ', ico: '○', name: '圆', desc: '半径算周长和面积 · 结果带 π' },
+      { id: 'rtri', ico: '90°', name: '解直角三角形', desc: '角 C 是直角，填任意两个量' },
+      { id: 'law', ico: '弦', name: '正弦 · 余弦定理', desc: '任意三角形，填任意三个量' },
+      { id: 'perm', ico: '排', name: '排列组合', desc: 'A(n,r) 与 C(n,r)，整数精确算' },
+      { id: 'seq', ico: '列', name: '等差 · 等比数列', desc: '填首项与公差 / 公比，求项与和' },
       { id: 'history', ico: '≡', name: '历史记录', desc: '最近 5 条，带时间，点一条接着算' }
     ],
     solverMenu: [
@@ -1231,7 +1369,6 @@ export default {
       { id: 'sys', ico: 'xy', name: '二元一次方程组', desc: '两行系数一起解 x 和 y' },
       { id: 'eqin', ico: 'x=', name: '输入方程', desc: '敲方程或算式，如 2x+3=7' }
     ],
-    // 单位换算
     unitCats: calc.UNIT_CATS,
     catIdx: 0,
     catName: '长度',
@@ -1245,7 +1382,6 @@ export default {
     pickTarget: 'from',
     pickUnits: [],
     pickCur: '',
-    // 进制转换
     baseChips: [
       { b: 10, name: '十进制' }, { b: 2, name: '二进制' }, { b: 8, name: '八进制' }, { b: 16, name: '十六进制' }
     ],
@@ -1255,12 +1391,10 @@ export default {
     baseErr: '',
     baseRows: [],
     baseKeys: [],
-    // 一次方程
     la: '2', lb: '3', lc: '0', ld: '7',
     lField: 'a',
     lLines: [],
     lCanPlot: false,
-    // 二次方程
     qa: '1', qb: '-3', qc: '2',
     qField: 'a',
     qLines: [],
@@ -1279,11 +1413,9 @@ export default {
     eqFocus: 1,
     eqShow2: false,
     eqLines: ['敲方程或算式，点「解」', '例：2x+3=7、(1+2)²'],
-    // 方程组
     s1a: '1', s1b: '1', s1c: '3', s2a: '1', s2b: '-1', s2c: '1',
     sField: 'a1',
     sLines: [],
-    // 分数计算
     fn1: '1', fd1: '2', fn2: '1', fd2: '3',
     fop: '+',
     fopSym: '+',
@@ -1293,19 +1425,18 @@ export default {
     fField: 'n1',
     fLines: [],
     intKeys: INT_KEYS,
-    // 根号化简
     sqrtN: '12',
     sqrtLines: [],
-    // 公约数公倍数
     ga: '12', gb: '18',
     gField: 'a',
     gLines: [],
-    // 三角形面积
     ta: '3', tb: '4', tc: '5',
     tField: 'a',
     tLines: [],
     tFvPx: 20,
-    // 函数图象
+    cr: '1',
+    cLines: [],
+    cFvPx: 20,
     plotTitle: '',
     plotPts: [],
     plotKeyPts: [],
@@ -1320,6 +1451,10 @@ export default {
     keyDisp: '_____ _____',
     keySlots: [{ ch: '', ml: 0 }, { ch: '', ml: 3 }, { ch: '', ml: 3 }, { ch: '', ml: 3 }, { ch: '', ml: 3 }, { ch: '', ml: 12 }, { ch: '', ml: 3 }, { ch: '', ml: 3 }, { ch: '', ml: 3 }, { ch: '', ml: 3 }],
     unlockMsg: '',
+    // 2026-11-15 自查 C7：被拦下时记下的待去目标（'tool:<id>' / 'solver:<id>' /
+    // 'plot:<kind>' / 'tools' / 'solvers' / 'history' / 'sci' / 'plotcfg'），
+    // 解锁成功后直达；无目标时维持原状（停在解锁页成功态）。
+    unlockTarget: null,
     unKeys: [
       { v: '1', t: '1' }, { v: '2', t: '2' }, { v: '3', t: '3' }, { v: '4', t: '4' },
       { v: '5', t: '5' }, { v: '6', t: '6' }, { v: '7', t: '7' }, { v: '8', t: '8' },
@@ -1329,7 +1464,6 @@ export default {
     plotAxisT: -10,
     plotLines: [],
     plotBack: 'quad',
-    // 函数图象设置页
     plotTypeChips: PLOT_TYPES,
     plotType: 'quad2',
     plotFormula: '',
@@ -1340,16 +1474,33 @@ export default {
   },
 
   buildSciKeys() {
+    // 科学键盘 24 键（1.6.0）：e 键恢复——课本式 ×10 显示已消除与 e 记法的混淆源头，高中考题离不开 e；另补 π、%、Ans
     this.sciKeys = [
       { v: 'sin(', label: 'sin', cls: 'fn', fs: 18 }, { v: 'cos(', label: 'cos', cls: 'fn', fs: 18 }, { v: 'tan(', label: 'tan', cls: 'fn', fs: 18 }, { v: 'log(', label: 'log', cls: 'fn', fs: 18 }, { v: 'ln(', label: 'ln', cls: 'fn', fs: 19 },
       { v: '√(', label: '√', cls: 'fn', fs: 23 }, { v: '³√(', label: '³√', cls: 'fn', fs: 20 }, { v: '²', label: 'x²', cls: 'fn', fs: 19 }, { v: '^', label: 'xʸ', cls: 'fn', fs: 19 }, { v: '!', label: 'n!', cls: 'fn', fs: 19 },
       { v: 'abs(', label: 'abs', cls: 'fn', fs: 18 }, { v: '°', label: '°', cls: 'fn', fs: 23 }, { v: '(', label: '(', cls: 'fn', fs: 25 }, { v: ')', label: ')', cls: 'fn', fs: 25 }, { v: 'back', label: '←', cls: 'fn', fs: 23 },
-      { v: '123', label: '123', cls: 'op', fs: 19 }, { v: 'C', label: 'C', cls: 'fnr', fs: 23 }, { v: 'deg', label: this.degMode ? '角度制' : '弧度制', cls: 'op', fs: 15 }, { v: 'x10', label: '×10ˣ', cls: 'fn', fs: 16 }, { v: 'eq', label: '=', cls: 'eq', fs: 27 }
+      { v: 'π', label: 'π', cls: 'fn', fs: 23 }, { v: 'e', label: 'e', cls: 'fn', fs: 23 }, { v: '%', label: '%', cls: 'fn', fs: 23 }, { v: 'ans', label: 'Ans', cls: 'fn', fs: 19 }, { v: 'C', label: 'C', cls: 'fnr', fs: 23 },
+      { v: '123', label: '123', cls: 'op', fs: 19 }, { v: 'deg', label: this.degMode ? '角度制' : '弧度制', cls: 'op', fs: 15 }, { v: 'x10', label: '×10ˣ', cls: 'fn', fs: 16 }, { v: 'eq', label: '=', cls: 'eq', fs: 27 }
     ]
   },
   onInit() {
+    // 跨页回程优先走路由参数：参数在页面创建时同步注入，首帧即直达工具箱，
+    // 不闪计算器主页（2026-11-15 真机反馈修复）。下面的存储读是参数缺失时的兜底。
+    if (this.backto === 'tools') this.view = 'tools'
     this.buildSciKeys()
     this.loadHist()
+    // 从第二页（pages/tools2）返回时直达工具箱（跨页 replace 导航的回程约定）
+    const selfBt = this
+    try {
+      storage.get({
+        key: 'calc_back_to',
+        success: function (data) {
+          if (data === 'tools') selfBt.view = 'tools'
+          try { storage.set({ key: 'calc_back_to', value: '' }) } catch (e) {}
+        },
+        fail: function () {}
+      })
+    } catch (e) {}
     this.fetchDeviceId()
     this.buildBaseKeys()
     this.unitCompute()
@@ -1361,16 +1512,15 @@ export default {
     this.sqrtSolve()
     this.gcdSolve()
     this.triSolve()
+    this.circSolve()
     this.syncPlotFields()
     this.refreshCalc()
   },
   onShow() { this.loadHist() },
 
-  // 按键震动反馈：点中瞬间先震（不等界面重绘）；用户定的规矩——只震动、不变色
   buzz() {
     try { vibrator.vibrate({ mode: 'short' }) } catch (e) {}
   },
-  // 右滑（系统返回手势）：逐级回退，不再直接退出软件
   onBackPress() {
     if (this.view === 'unlock') { this.view = 'calc'; return true }
     if (this.view === 'calc') {
@@ -1398,19 +1548,11 @@ export default {
           try {
             const arr = JSON.parse(data || '[]')
             if (Array.isArray(arr)) {
-              // 字段完整性校验（1.5.10）：旧版只验 expr，res 缺失/类型错的条目点开时 useHist 会崩；
-              // ts 非法会让时间显示乱码。字段不全的整条丢弃，合法条目不受影响。
               self.hist = arr.filter(function (h) {
                 return h && typeof h.expr === 'string' && typeof h.res === 'string' &&
                   h.expr.length <= 200 && h.res.length <= 100 && isRealCalc(h.expr)
               }).map(function (h) {
-                // res 显示迁移（1.5.17）：旧记录的 res 是 e 记法显示串，读入时
-                // 换成课本式再展示（sciStr 非 e 串原样返回）；回退再入算式时
-                // useHist 经 sciToPlain 还原，新旧都通
                 const o = { expr: h.expr, res: calc.sciStr(h.res), sgn: h.sgn, ts: (Number.isFinite(h.ts) && Math.abs(h.ts) <= 8640000000000000) ? h.ts : 0 }
-                // 全精度回读串 rf（1.5.14）：合法才保留——这层重组若漏带 rf，
-                // 历史回算会在重启后悄悄退回 12 位文本（自攻实测抓到）；旧记录
-                // 没有 rf 时 useHist 自动回退显示文本
                 if (typeof h.rf === 'string' && h.rf.length > 0 && h.rf.length <= 30 && isFinite(Number(h.rf))) o.rf = h.rf
                 return o
               }).slice(0, 10)
@@ -1427,12 +1569,9 @@ export default {
     try { storage.set({ key: 'calc_hist', value: JSON.stringify(this.hist) }) } catch (e) {}
   },
 
-  // ---------- 导航 ----------
-  // ---------- 收费：工具箱解锁 ----------
-  // 免费版（应急版 1.4.0，用户 2026-11-08 预授权的米坛打回预案）：基础计算免费可用，科学键盘/工具箱/历史等高级功能输密钥解锁。
-  // 密钥与《乒乓大乱斗》不通用（paykey.js 独立保密串与派生域）。存的是密钥本身，每次启动重新验真，不存「已解锁」布尔值。
-  gatePaid() {
+  gatePaid(target) {
     if (this.unlocked) return false
+    this.unlockTarget = target || null
     this.view = 'unlock'
     return true
   },
@@ -1528,10 +1667,24 @@ export default {
     if (keyMatches(this.deviceId, this.keyInput)) {
       this.unlocked = true
       try { storage.set({ key: 'calc_key', value: this.keyInput }) } catch (e) {}
+      const target = this.unlockTarget
+      this.unlockTarget = null
       this.keyInput = ''
       this.refreshKeyDisp()
       this.unlockMsg = ''
       try { vibrator.vibrate({ mode: 'long' }) } catch (e) {}
+      // 2026-11-15 自查 C7：解锁成功直达被拦的目标，不用再点一次。
+      // gatePaid 已放行（unlocked=true），以下调用不会再被拦。
+      if (target) {
+        if (target.indexOf('tool:') === 0) { this.openTool(target.slice(5)); return }
+        if (target.indexOf('solver:') === 0) { this.openSolver(target.slice(7)); return }
+        if (target.indexOf('plot:') === 0) { this.openPlot(target.slice(5)); return }
+        if (target === 'tools') { this.view = 'tools'; return }
+        if (target === 'solvers') { this.view = 'solvers'; return }
+        if (target === 'history') { this.openHistory(); return }
+        if (target === 'sci') { this.padPage = 'sci'; this.view = 'calc'; return }
+        if (target === 'plotcfg') { this.view = 'plotcfg'; return }
+      }
     } else {
       this.unlockMsg = '密钥不对，请核对后重新输入'
       this.keyInput = ''
@@ -1540,13 +1693,13 @@ export default {
   },
 
   goCalc() { this.buzz(); this.view = 'calc' },
-  goTools() { this.buzz(); if (this.gatePaid()) return; this.view = 'tools' },
-  goSolvers() { this.buzz(); if (this.gatePaid()) return; this.view = 'solvers' },
-  openTools() { this.buzz(); if (this.gatePaid()) return; this.view = 'tools' },
-  openHistory() { this.buzz(); if (this.gatePaid()) return; this.refreshHistDisp(); this.view = 'history' },
+  goTools() { this.buzz(); if (this.gatePaid('tools')) return; this.view = 'tools' },
+  goSolvers() { this.buzz(); if (this.gatePaid('solvers')) return; this.view = 'solvers' },
+  openTools() { this.buzz(); if (this.gatePaid('tools')) return; this.view = 'tools' },
+  openHistory() { this.buzz(); if (this.gatePaid('history')) return; this.refreshHistDisp(); this.view = 'history' },
   openTool(id) {
     this.buzz()
-    if (this.gatePaid()) return
+    if (this.gatePaid('tool:' + id)) return
     if (id === 'unit') { this.view = 'unit'; this.unitCompute() }
     else if (id === 'base') { this.view = 'base'; this.baseCompute() }
     else if (id === 'solvers') { this.view = 'solvers' }
@@ -1555,28 +1708,34 @@ export default {
     else if (id === 'sqrt') { this.view = 'sqrt'; this.sqrtSolve() }
     else if (id === 'gcd') { this.view = 'gcd'; this.gcdSolve() }
     else if (id === 'tri') { this.view = 'tri'; this.triSolve() }
+    else if (id === 'circ') { this.view = 'circ'; this.circSolve() }
+    else if (id === 'rtri' || id === 'law' || id === 'perm' || id === 'seq') { this.navTool(id) }
     else if (id === 'history') { this.view = 'history' }
+  },
+  navTool(id) {
+    this.buzz()
+    try { storage.set({ key: 'calc_tool_nav', value: id }) } catch (e) {}
+    // 必须 replace 不能 push：手环 QuickJS 堆上限紧，push 会让主页与第二页的
+    // 编译代码同时驻留、加载第二页时 OOM（2026-11-15 模拟器实测，见 BUGLOG）。
+    // 目标工具走路由参数同步传（首帧直达、不闪第二页菜单）；存储键保留作兜底。
+    router.replace({ uri: '/pages/tools2', params: { tool: id } })
   },
   openSolver(id) {
     this.buzz()
-    if (this.gatePaid()) return
+    if (this.gatePaid('solver:' + id)) return
     if (id === 'lin') { this.view = 'lin'; this.linSolve() }
     else if (id === 'quad') { this.view = 'quad'; this.quadSolve() }
     else if (id === 'sys') { this.view = 'sys'; this.sysSolve() }
     else if (id === 'eqin') { this.view = 'eqin' }
   },
 
-  // ---------- 主计算器 ----------
   refreshCalc() {
     const ex = this.expr
     this.exprPx = ex.length <= 14 ? 32 : (ex.length <= 20 ? 26 : (ex.length <= 26 ? 21 : (ex.length <= 29 ? 17 : 15)))
-    // 回显走课本式渲染（1.5.17）：×10^ 段转 ×10＋上标（sciEcho），其余原样；
-    // 字号档仍按内部长度算（上标形只短不长，不会比旧口径更挤）
     const echo = sciEcho(ex)
     this.exprDisp = this.justEq ? '' : (echo.length <= 32 ? echo : echo.slice(-32))
     this.canFrac = false
     if (!ex) { this.resDisp = '0'; this.resPx = 50; this.previewOk = false; return }
-    // 求值前自动收尾：去掉末尾没写完的运算符，补齐没关上的左括号（真计算器都这么干）
     let src = ex
     while (src.length && '+-−×÷^('.indexOf(src.slice(-1)) >= 0) src = src.slice(0, -1)
     if (!src) { this.previewOk = false; this.resDisp = '···'; this.resPx = 36; return }
@@ -1587,9 +1746,6 @@ export default {
     try {
       const v = calc.evaluate(src, { deg: this.degMode })
       if (!isFinite(v)) {
-        // 求值溢出（如 0^-1、1e308×10）是错误状态不是结果（1.5.14）：旧版经
-        // formatPlain 拼成「≈ 溢出」却仍 previewOk、按正常结果色显示，按 = 又
-        // 被拒绝，状态自相矛盾（ChatGPT 第十份报告实证）；按错误状态处理
         this.previewOk = false
         this.previewVal = v
         this.resDisp = '溢出'
@@ -1607,10 +1763,7 @@ export default {
       if (this.fracOn && frac) {
         s = dm(frac.d === 1 ? String(frac.n) : frac.n + '/' + frac.d)
         mainIsFrac = true
-        // 分数与原值严格相等才配「=」；容差内近似认出的分数（如 1.0000000002÷3→1/3）
-        // 用「≈」，不许冒充精确值（1.5.12，ChatGPT 第八份报告实证）
         fracExact = calc.fracIsExact(v, frac)
-        // 分数串太长（大数带小数）一行放不下会溢出：回退成小数显示，别截断
         if (s.length > 16) { s = fitResStr(v, 11); mainIsFrac = false }
       } else s = fitResStr(v, this.canFrac ? 11 : 18)
       this.resDisp = (mainIsFrac ? (fracExact ? '=' : '≈') : calc.eqSign(v, s)) + ' ' + s
@@ -1618,7 +1771,6 @@ export default {
       this.chipText = fracChipText(this.fracOn, frac, v, mainIsFrac)
     } catch (e) {
       this.previewOk = false
-      // 能说清的错直接说清，别让用户对着 ··· 猜（算式没写完才用 ···）
       const hints = { div0: '不能 ÷ 0', overflow: '数太大了', domain: '没有意义', undefined: '没有意义', 'fact domain': '阶乘要用整数', precision: '整数超出精确范围' }
       const h = hints[e.message]
       this.resDisp = h || '···'
@@ -1628,13 +1780,15 @@ export default {
   appendTok(v) {
     const ex = this.expr
     const last = ex.slice(-1)
-    const needMul = last && (VAL_END.indexOf(last) >= 0)
+    // 2026-11-15 自查 C1：'.' 也是值结尾（2.π 应成 2.×π），否则式子卡死局。
+    // 不把 '.' 加进 VAL_END——那会连带改后缀键、')'、'^'、数字键多处行为。
+    const needMul = last && (VAL_END.indexOf(last) >= 0 || last === '.')
     if ((v === '(' || v === 'π' || v === 'e') && needMul) this.expr = ex + '×' + v
     else this.expr = ex + v
   },
   pressKey(v) {
     this.buzz()
-    if (v === 'fx') { if (this.gatePaid()) return; this.padPage = 'sci'; return }
+    if (v === 'fx') { if (this.gatePaid('sci')) return; this.padPage = 'sci'; return }
     if (v === '123') { this.padPage = 'main'; return }
     if (v === 'deg') { this.toggleDeg(); return }
     if (v === 'C') { this.expr = ''; this.fracOn = false; this.justEq = false; this.refreshCalc(); return }
@@ -1644,7 +1798,6 @@ export default {
       const val = this.previewVal
       const plain = calc.formatPlain(val)
       if (plain === '错误' || plain === '溢出') return
-      // 只记真实计算：式子里没有任何运算符/函数（纯数字、常数）按 = 不记；与上一条完全相同不重复记
       const exprStr = this.evalSrc || this.expr
       const resStr = calc.formatDisplay(val)
       const hasOp = isRealCalc(exprStr)
@@ -1656,9 +1809,6 @@ export default {
         this.histPage = 0
         this.refreshHistDisp()
       }
-      // 全精度接力（1.5.14）：接力与 Ans 用原始双精度值的回读串，不用 12 位
-      // 显示文本——旧版按 = 后接着 ×3，10÷3 得 9.99999999999、一次输完却得
-      // 10（ChatGPT 第十份报告实证）。lastAns 保持 12 位文本仅作兼容，实际取 ansFull
       this.lastAns = plain
       this.ansFull = String(val)
       this.expr = dispNum(String(val))
@@ -1669,6 +1819,8 @@ export default {
     }
     if (v === 'ans') {
       if (!this.lastAns) return
+      // 2026-11-15 自查 C5：60 字上限，Ans 追加也不能顶出去。
+      if (this.expr.length >= 60) return
       const a = dispNum(this.ansFull || this.lastAns)
       const last = this.expr.slice(-1)
       if (last && VAL_END.indexOf(last) >= 0) this.expr += '×' + a
@@ -1680,8 +1832,6 @@ export default {
     if (v === 'neg') {
       this.justEq = false
       if (!this.expr) { this.expr = '−'; this.refreshCalc(); return }
-      // 只有开头 −( 的配对括号正好落在结尾，才是「整体取反」可以拆；
-      // 像 −(2+3)×(4+5) 这种拆了会把式子拆坏
       let unwrapped = false
       if (this.expr.indexOf('−(') === 0 && this.expr.slice(-1) === ')') {
         let depth = 0, matchEnd = -1
@@ -1692,11 +1842,14 @@ export default {
         }
         if (matchEnd === this.expr.length - 1) { this.expr = this.expr.slice(2, -1); unwrapped = true }
       }
-      if (!unwrapped) this.expr = '−(' + this.expr + ')'
+      if (!unwrapped) {
+        // 2026-11-15 自查 C5：60 字上限，± 包裹也不能顶出去；解包（变短）不拦。
+        if (this.expr.length >= 60) return
+        this.expr = '−(' + this.expr + ')'
+      }
       this.refreshCalc()
       return
     }
-    // 刚按完 = ：再输数字/函数/左括号 = 开始新算式（输运算符才是接着算）
     if (this.justEq) {
       this.justEq = false
       if ('0123456789'.indexOf(v) >= 0 || v === '.' || v === '(' || v === 'π' || v === 'e' || FN_TOKENS.indexOf(v) >= 0) {
@@ -1705,10 +1858,6 @@ export default {
     }
     if (this.expr.length >= 60) return
     if (v === 'x10') {
-      // ×10 幂键（1.5.17）：替代原常数 e 键（e 记法混淆源头、课本机同位）。
-      // 尾数/右括号/后缀之后接 '×10^'，空式子/运算符/左括号之后接 '10^'，
-      // 随后用数字键与 − 键输指数；内部就是普通 ^ 表达式，存储与求值不动，
-      // 回显由 sciEcho 渲染成课本式。常数 e 自此无键盘入口（见 BUGLOG）
       const ex0 = this.expr
       const l0 = ex0.slice(-1)
       if (!ex0) this.expr = '10^'
@@ -1719,10 +1868,13 @@ export default {
     }
     const last = this.expr.slice(-1)
     if (FN_TOKENS.indexOf(v) >= 0) {
-      if (last && VAL_END.indexOf(last) >= 0) this.expr += '×' + v
+      // 2026-11-15 自查 C1：'.' 后按函数键同样补 ×（2.×sin(）。
+      if (last && (VAL_END.indexOf(last) >= 0 || last === '.')) this.expr += '×' + v
       else this.expr += v
     } else if (v === '²' || v === '!' || v === '°' || v === '%') {
-      if (last && VAL_END.indexOf(last) >= 0) this.expr += v
+      // 2026-11-15 自查 C6：° 连按不追加（90°° 会被当两次角度换算默默算错值）。
+      if (v === '°' && last === '°') { /* 忽略 */ }
+      else if (last && VAL_END.indexOf(last) >= 0) this.expr += v
     } else if (v === '^') {
       if (!last) return
       if ('+−×÷^'.indexOf(last) >= 0) this.expr = this.expr.slice(0, -1) + '^'
@@ -1735,9 +1887,6 @@ export default {
       let seg = this.expr.split(/[+\-−×÷()^]/).pop()
       if (seg.indexOf('.') >= 0) return
       if (!last || '+-−×÷(^'.indexOf(last) >= 0) this.expr += '0.'
-      // 小数点键补隐式乘法（1.5.16）：前一字符是已完成数值项（) ² ! π % ° e）
-      // 时，旧版直接拼 '.' 生成 '(2).5' 这类无效式（第十一轮复审实证）；数字键
-      // 早有补 × 的口径，小数点键同规则补 '×0.'，与数字键产物风格一致
       else if (VAL_END.indexOf(last) >= 0 && '0123456789'.indexOf(last) < 0) this.expr += '×0.'
       else this.expr += '.'
     } else if (v === '(' || v === 'π' || v === 'e') {
@@ -1758,13 +1907,10 @@ export default {
   toggleFrac() { this.buzz(); this.fracOn = !this.fracOn; this.refreshCalc() },
   toggleDeg() { this.degMode = !this.degMode; this.buildSciKeys(); this.refreshCalc() },
 
-  // ---------- 历史 ----------
   useHist(item) {
     this.buzz()
     if (!item || typeof item.res !== 'string') return
     if (this.gatePaid()) return
-    // 点历史回算优先用记录里的全精度值（1.5.14，旧记录没有 rf 时回退显示文本）；
-    // 回退串先经 sciToPlain 把课本式还原成可解析的 e 记法（1.5.17），旧 e 串原样
     this.expr = dispNum(item.rf || calc.sciToPlain(item.res.replace(/,/g, '')))
     this.fracOn = false
     this.justEq = true
@@ -1778,8 +1924,6 @@ export default {
     if (this.histPage > pages - 1) this.histPage = pages - 1
     if (this.histPage < 0) this.histPage = 0
     this.histDisp = this.hist.slice(this.histPage * 5, this.histPage * 5 + 5).map(function (h) {
-      // expr 回显同样走课本式渲染（1.5.17）：存储的内部式子不动，只渲染；
-      // 字号按渲染后长度选（×10^ 段转上标后更短）
       const e2 = sciEcho(h.expr)
       return { expr: e2, res: h.res, sgn: h.sgn, ts: h.ts, px: e2.length > 26 ? 12 : 15, time: h.ts ? fmtHistTime(h.ts) : (h.time || '') }
     })
@@ -1798,7 +1942,6 @@ export default {
     this.refreshHistDisp()
   },
 
-  // ---------- 单位换算 ----------
   setCat(name) {
     this.buzz()
     const cats = calc.UNIT_CATS
@@ -1814,7 +1957,6 @@ export default {
         break
       }
     }
-    // 温度默认给最常用的 °C → °F，别默认开尔文
     if (name === '温度') {
       this.unitFromId = 'c'; this.unitFromName = '摄氏度 °C'
       this.unitToId = 'f'; this.unitToName = '华氏度 °F'
@@ -1828,10 +1970,6 @@ export default {
     const r = calc.convertUnit(this.catIdx, this.unitFromId, this.unitToId, v)
     if (isNaN(r)) { this.unitRes = '' }
     else if (r !== 0 && calc.formatDisplay(r) === '0') {
-      // 极小非零结果（1.5.16）：cleanNum 的相消尾巴判别会把 1.65e-16 这类真值
-      // 归零（既定边界），旧版单位页照样显示裸 '0'、连近似标记都没有（第十一
-      // 轮复审实证）。改走科学计数并带 ≈，让学生知道这不是精确的 0；
-      // 外壳改课本式（1.5.17）：≈ 1.65×10⁻¹⁶
       this.unitRes = '≈ ' + dispNum(calc.sciStr(r.toExponential(2)))
     }
     else this.unitRes = calc.formatDisplay(r)
@@ -1862,8 +2000,6 @@ export default {
     this.unitToId = id; this.unitToName = nm
     this.unitCompute()
   },
-  // 带回计算：把换算过程式送进主表达式接着算（不是只丢结果数字，过程可见可继续运算）。
-  // 键盘「带回」键与交换行「带回计算」钮共用此核心，保证两处行为一致。
   carryUnitProc() {
     if (!this.unitRes) return
     const v = parseFloat(this.unitVal)
@@ -1886,24 +2022,25 @@ export default {
     else if (v === 'neg') {
       this.unitVal = this.unitVal.indexOf('-') === 0 ? this.unitVal.slice(1) : '-' + this.unitVal
     } else if (v === '.') {
+      // 2026-11-15 自查 C4：'.' 分支也查 12 位上限（12 字 + '.' 不再顶到 13 字）。
+      if (this.unitVal.replace('-', '').replace('.', '').length >= 12) return
       if (this.unitVal.indexOf('.') < 0) this.unitVal = (this.unitVal === '-' ? '-0' : (this.unitVal || '0')) + '.'
     } else if (v === 'ok') {
       this.carryUnitProc()
       return
     }
     else {
-      // 前导零处理，同系数格
       if (this.unitVal === '0' || this.unitVal === '-0') {
         if (v === '0' || v === '00') { this.unitCompute(); return }
         if (/^[1-9]$/.test(v)) { this.unitVal = (this.unitVal.charAt(0) === '-' ? '-' : '') + v; this.unitCompute(); return }
       }
-      if (this.unitVal.replace('-', '').replace('.', '').length >= 12) return
+      // 2026-11-15 自查 C4：'00' 按 +2 位算 12 位上限（11 字 + '00' 不再顶到 13 字）。
+      if (this.unitVal.replace('-', '').replace('.', '').length + (v === '00' ? 2 : 1) > 12) return
       this.unitVal += v
     }
     this.unitCompute()
   },
 
-  // ---------- 进制转换 ----------
   buildBaseKeys() {
     const names = { 2: '二进制', 8: '八进制', 10: '十进制', 16: '十六进制' }
     this.baseName = names[this.fromBase]
@@ -1914,7 +2051,6 @@ export default {
   },
   setBase(b) {
     this.buzz()
-    // 切进制 = 把当前数值换算过去，而不是把不合法的数字删掉
     let newVal = ''
     if (this.baseVal) {
       const r = calc.baseConvert(this.baseVal, this.fromBase)
@@ -1955,7 +2091,6 @@ export default {
     this.baseCompute()
   },
 
-  // ---------- 一次方程 ----------
   setLField(f) { this.buzz(); this.lField = f },
   linSolve() {
     this.lFvPx = fvPxOf([this.la, this.lb, this.lc, this.ld], false)
@@ -1966,7 +2101,17 @@ export default {
     if (r.error) { this.lLines = [r.error]; return }
     const F = function (x) { return calc.formatDisplay(x) }
     if (r.type === 'one') {
-      this.lLines = [ansStr('x', r.x, 27)]
+      let sym = null
+      const mA = monoSub(monoOf(this.la), monoOf(this.lc))
+      const mB = monoSub(monoOf(this.ld), monoOf(this.lb))
+      if (mA && mB && mA.qn !== 0) {
+        const xm = monoDiv(mB, mA)
+        if (xm && (xm.pi !== 0 || xm.rad !== 1)) {
+          const sv = (xm.qn / xm.qd) * Math.pow(Math.PI, xm.pi) * Math.sqrt(xm.rad)
+          if (Math.abs(sv - r.x) <= 1e-9 * Math.abs(r.x) + 1e-12) sym = monoStr(xm)
+        }
+      }
+      this.lLines = [sym ? symAnsStr('x', r.x, sym, 27) : ansStr('x', r.x, 27)]
       this.lCanPlot = (a - c) !== 0
     } else if (r.type === 'none') this.lLines = ['方程无解（两边 x 系数一样）']
     else this.lLines = ['恒等式：无数个解']
@@ -1976,13 +2121,12 @@ export default {
     const props = { a: 'la', b: 'lb', c: 'lc', d: 'ld' }
     const order = ['a', 'b', 'c', 'd']
     const prop = props[this.lField]
-    const r = editNum(this[prop], v, true)
+    const r = editCoeff(this[prop], v)
     if (r === 'NEXT') { this.lField = order[(order.indexOf(this.lField) + 1) % 4]; return }
     this[prop] = r
     this.linSolve()
   },
 
-  // ---------- 二次方程 ----------
   setQField(f) { this.buzz(); this.qField = f },
   quadSolve() {
     this.qFvPx = fvPxOf([this.qa, this.qb, this.qc], true)
@@ -1993,7 +2137,6 @@ export default {
     if (r.error) { this.qLines = [r.error]; return }
     const F = function (x) { return calc.formatDisplay(x) }
     if (r.type === 'two') {
-      // 无理根先给根式精确形（卡西欧方程模式口径）；恢复不出根式时 rads 为 null，走既有分数/小数行
       const rads = quadRadStrs(a, b, c, r.x1, r.x2)
       this.qLines = ['判别式 Δ ' + calc.eqSign(r.disc) + ' ' + fitResStr(r.disc, 13) + ' > 0',
         rads ? radAnsStr('x1', r.x1, rads.x1, 28, rads.exact) : ansStr('x1', r.x1, 28),
@@ -2001,7 +2144,6 @@ export default {
     }
     else if (r.type === 'one') this.qLines = ['判别式 Δ = 0（两根相等）', ansStr('x', r.x, 28)]
     else if (r.type === 'complex') {
-      // 复数根：虚部有根式精确形时整行给精确形（实部分数 + 虚部根式）；放不下/恢复不出回落 cplxStr 的 ≤30 字收精度行
       const imRad = quadImRad(a, b, c, r.im)
       const cr1 = imRad ? cplxRadStr('x1', r, imRad, '+') : null
       const cr2 = imRad ? cplxRadStr('x2', r, imRad, '−') : null
@@ -2016,13 +2158,12 @@ export default {
     const props = { a: 'qa', b: 'qb', c: 'qc' }
     const order = ['a', 'b', 'c']
     const prop = props[this.qField]
-    const r = editNum(this[prop], v, true)
+    const r = editCoeff(this[prop], v)
     if (r === 'NEXT') { this.qField = order[(order.indexOf(this.qField) + 1) % 3]; return }
     this[prop] = r
     this.quadSolve()
   },
 
-  // ---------- 方程组 ----------
   setSField(f) { this.buzz(); this.sField = f },
   sysSolve() {
     this.sFvPx = fvPxOf([this.s1a, this.s1b, this.s1c, this.s2a, this.s2b, this.s2c], true)
@@ -2042,13 +2183,12 @@ export default {
     const props = { a1: 's1a', b1: 's1b', c1: 's1c', a2: 's2a', b2: 's2b', c2: 's2c' }
     const order = ['a1', 'b1', 'c1', 'a2', 'b2', 'c2']
     const prop = props[this.sField]
-    const r = editNum(this[prop], v, true)
+    const r = editCoeff(this[prop], v)
     if (r === 'NEXT') { this.sField = order[(order.indexOf(this.sField) + 1) % 6]; return }
     this[prop] = r
     this.sysSolve()
   },
 
-  // ---------- 输入方程（自由输入） ----------
   eqPad(v) {
     this.buzz()
     if (v === 'solve') { this.eqSolve(); return }
@@ -2063,7 +2203,7 @@ export default {
       if (!s || s.indexOf('=') >= 0 || isOp || last === '(') return
       s += '='
     } else if (v === '²') {
-      if (!s || !/[0-9)xy.]$/.test(last)) return
+      if (!s || !/[0-9)xyπe.]$/.test(last)) return
       s += '²'
     } else if (v === '+' || v === '×' || v === '÷') {
       if (!s || last === '(' || last === '=') return
@@ -2075,10 +2215,21 @@ export default {
       if (!s || isOp || last === '(' || last === '.') return
       s += '/'
     } else if (v === '.') {
-      if (last === '²' || last === ')') return
+      if (last === '²' || last === ')' || last === 'π' || last === 'e') return
       const seg = s.split(/[+\-−×÷/()=xy]/).pop()
       if (seg.indexOf('.') >= 0) return
-      s += (!s || isOp || last === '(' || last === 'x' || last === 'y') ? '0.' : '.'
+      // 2026-11-15 自查 C2：% / ° 后按 .，与主键盘一致补 ×0.（50%→50%×0.），
+      // 不再敲出 50%.5 这种点解才报错的非法式子。
+      if (last === '%' || last === '°') s += '×0.'
+      else s += (!s || isOp || last === '(' || last === 'x' || last === 'y') ? '0.' : '.'
+    } else if (v === '√(' || v === 'π' || v === 'e' || v === '(') {
+      // 2026-11-15 自查 C1：'.' 后按 √(/π/e/( 同样补 ×（2.×π）。
+      if (last && /[0-9)xy²πe%°.]/.test(last)) s += '×'
+      s += v
+    } else if (v === '^' || v === '%' || v === '°') {
+      // 2026-11-15 自查 C3：允许 % 连按（50%%，与主键盘口径一致）。
+      if (!s || !/[0-9)xy²πe%]/.test(last)) return
+      s += v
     } else if (v === ')') {
       let open = 0
       for (const ch of s) { if (ch === '(') open++; else if (ch === ')') open-- }
@@ -2112,28 +2263,17 @@ export default {
       return calc.evaluate(src, { deg: this.degMode })
     }
     const raw1 = this.eqExpr, raw2 = this.eqExpr2
-    // 方程/算式任一边以运算符结尾（悬空运算符）直接报错（1.5.15）：evalSide 会
-    // 宽容裁掉尾部运算符——主计算器无妨，但方程里「x+=3」会被当成 x=3 静默解掉
-    // 另一个问题（自查实证，2x+=7、x−=3 同病）。括号未闭合的宽容（自动补）保留，
-    // 中间的双运算符（x++2 的一元 +）是合法数学写法、不拦
-    // 字符集 1.5.16 补 ASCII '/'：方程键盘的除号键就是 '/'，1.5.15 只拦了 '÷'，
-    // '3x=5/' 仍被 evalSide 裁尾后改题求解（第十一轮复审实证）；与 evalSide 的
-    // 裁尾集合 '+-*/^(' 对齐
     const sideDangling = (raw) => raw.split('=').some((sg) => /[+\-−×÷\/^(]$/.test(sg.trim()))
     if (((raw1 + raw2).indexOf('=') >= 0 || /[xy]/.test(raw1 + raw2)) && (sideDangling(raw1) || sideDangling(raw2))) {
       this.eqLines = ['算式有问题，检查括号和符号']
       return
     }
-    // ---- 二元一次方程组：任一式含 y ----
     if ((raw1 + raw2).indexOf('y') >= 0) {
       if (!raw1 || !raw2) { this.eqLines = ['含 y 的是方程组，要两个方程', '点下面的框，把第二个方程输完']; return }
       if ((raw1.match(/=/g) || []).length > 1 || (raw2.match(/=/g) || []).length > 1) { this.eqLines = ['每个方程只能有一个 = 号']; return }
       try {
         const coef = (raw) => {
           const parts = raw.indexOf('=') >= 0 ? raw.split('=') : [raw, '0']
-          // Sside 记录两边式子自身的量级：容差绝对项按它走（1.5.12），不再用固定
-          // 1e-12 地板——方程整体在 1e-15 量级时固定地板把 xy 这类非线性项整个吞掉、
-          // 误判成一次方程组（1e-15xy=0 与 x=1 曾被判「无数个解」，第八份报告实证）
           let Sside = 0
           const g = (tx, ty) => {
             const L = evalSide(parts[0], tx, ty), R = evalSide(parts[1], tx, ty)
@@ -2144,19 +2284,6 @@ export default {
           const c00 = g(0, 0)
           const g10 = g(1, 0), g01 = g(0, 1)
           const A = g10 - c00, B = g01 - c00
-          // 线性校验探针（1.5.10/1.5.12 加密）：能单独照出 xy/x²/y² 与高阶混合项，
-          // 并加非整数点防「在全部探针点恰好为零」的构造多项式欺骗。
-          // 1.5.13 再加大幅值点并改逐点噪声容差：旧容差 1e-8·S 随采样值尺度放大，
-          // x+0.0000000001xy=0 的交叉项（系数 1e-10）在小探针上偏差仅 4e-10、被
-          // 3e-8 级容差整个吞掉、误判一次方程组给出「无解」（真解 x=1,y=−1e10，
-          // ChatGPT 第九份报告实证）；在 (512,512) 处该项偏差达 0.026 无处可藏。
-          // 逐点容差只给求值噪声额度：A、B 的估计误差界（16·EPSILON·两边量级）
-          // 按探针坐标放大，不再随函数尺度放大。大点求值抛错或非有限时跳过
-          //（分母型式子本就会在小探针上露馅，不靠大点定生死）。
-          // 系数也改多尺度：A、B 优先用大尺度差分（(65536,0)/(0,65536)，退回
-          // 512 尺度）——大常数偏移下单位尺度差分带 ulp(1e9) 级误差，0.1x+0.1y=1e9
-          // 这类方程组的解曾因此偏出上千；大尺度估值把误差压低约 5 个数量级。
-          // 求解系数须先过全探针校验，不过则退回单位尺度系数再验，仍不过报不支持
           const probes = [[1, 1], [2, 0], [0, 2], [2, 2], [2, 1], [1, 2], [-2, 1], [3, 0], [0, 3], [3, 3], [0.5, 0.5], [0.5, 2], [2, 0.5], [-1, -1], [1, -2]]
           const vals = []
           for (const t of probes) { vals.push(g(t[0], t[1])) }
@@ -2177,11 +2304,6 @@ export default {
           let Ax = A, Bx = B, Dx = 1, Dy = 1
           if (vB16x !== null) { Ax = (vB16x - c00) / 65536; Dx = 65536 } else if (v512x !== null) { Ax = (v512x - c00) / 512; Dx = 512 }
           if (vB16y !== null) { Bx = (vB16y - c00) / 65536; Dy = 65536 } else if (v512y !== null) { Bx = (v512y - c00) / 512; Dy = 512 }
-          // 逐点容差 1.5.14 收紧：旧版 16·EPSILON·Sside·(1+|x|+|y|) 把 Sside（被大
-          // 常数撑到 1e9）再乘探针坐标，(512,512) 处容差达 3.6，x+1e-8xy=1e9 的
-          // 交叉项偏差 0.0026 被整个吞掉、误判一次方程组（ChatGPT 第十份报告
-          // 实证）。新容差两项：求值噪声按预测式各项量级走（32·EPSILON·各项和），
-          // 系数估计误差按其推导尺度 D 折算（大尺度差分估出的系数误差小 D 倍）
           const fits = (Aa, Bb, Dd) => {
             for (let pi = 0; pi < probes.length; pi++) {
               const px = probes[pi][0], py = probes[pi][1]
@@ -2207,7 +2329,6 @@ export default {
       }
       return
     }
-    // ---- 一元 / 纯算式 ----
     const raw = raw1 || raw2
     if (!raw) { this.eqLines = ['先敲一个方程或算式']; return }
     if ((raw.match(/=/g) || []).length > 1) { this.eqLines = ['只能有一个 = 号']; return }
@@ -2216,25 +2337,9 @@ export default {
         if (raw.indexOf('=') >= 0) {
           const parts = raw.split('=')
           const lv = evalSide(parts[0], null), rv = evalSide(parts[1], null)
-          // 相等判据 1.5.13 改按 ulp 走：相对容差在任何尺度都会吞掉真实差异——
-          // 1e16 与 10000000000000010 差 10、1e-10 与 1.000000000001e-10 差 1e-22，
-          // 旧版 1e-14 相对＋6e-17 地板都判成相等（ChatGPT 第九份报告实证）。
-          // 新判据：两边同为非零时差须 ≤3·EPSILON·较大边（约 3~6 个 ulp，只吸收
-          // 0.1+0.2=0.3 这类 1~2 ulp 的经典残差）；一边为零时只吸收 ≤6e-17 的
-          // 相消尾巴（0.1+0.2−0.3=5.55e-17），1e-16 起一律判不相等
           const scMax = Math.max(Math.abs(lv), Math.abs(rv))
-          // 两边都是单个数字字面量时按值全等比（1.5.14）：0=0.00000000000000001
-          // 里的 1e-17 是用户写明的数、不是相消尾巴，旧版一律 ≤6e-17 吸收、误判
-          // 恒等式（ChatGPT 第十份报告实证）；含运算的式子才走 ulp/尾巴容差，
-          // 0.1+0.2=0.3 这类经典残差不受影响
           const litRe = /^[+\-−]?(\d+\.?\d*|\.\d+)([eE][+\-−]?\d+)?$/
           const bothLit = litRe.test(parts[0].trim()) && litRe.test(parts[1].trim())
-          // 零侧地板收紧（1.5.16）：6e-17 地板本是给相消尾巴的（0.1+0.2−0.3
-          // = 5.55e-17），但无减法的式子根本不存在相消——0+0.00000000000000001
-          // 里的 1e-17 是用户写明的真值，旧版一律吸收、误判恒等式（第十一轮
-          // 复审实证）。收紧后：一侧含二元减法（值后跟 −/-；科学计数指数里的
-          // 负号先剥掉再看）才允许 ≤6e-17 的尾巴吸收；否则零侧必须全等
-          //（地板 0）。0.1+0.2−0.3=0 等经典相消不受影响
           const sideHasSub = (s) => /[0-9)π%²!°][-−]/.test(String(s).replace(/\d[eE][+\-−]?\d+/g, '#').replace(/×10[⁻]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, '#'))
           const tailOk = sideHasSub(parts[0]) || sideHasSub(parts[1])
           const isEq = bothLit ? lv === rv : ((lv !== 0 && rv !== 0)
@@ -2243,8 +2348,6 @@ export default {
           if (isEq) this.eqLines = ['两边相等：恒等式']
           else {
             let ll = ansStr('左边', lv, 26), rl = ansStr('右边', rv, 26)
-            // 两边收精度后的显示串若长得一模一样（如 1e16 与 10000000000000010 都被
-            // 收成 1.000000000e+16），学生看不出差在哪：改用全位原文展示（1.5.13）
             if (ll.slice(3) === rl.slice(3)) { ll = '左边 = ' + dm(calc.sciStr(calc.formatPlain(lv))); rl = '右边 = ' + dm(calc.sciStr(calc.formatPlain(rv))) }
             this.eqLines = ['两边不相等', ll, rl]
           }
@@ -2255,8 +2358,6 @@ export default {
         return
       }
       const parts = raw.indexOf('=') >= 0 ? raw.split('=') : [raw, '0']
-      // Sside 记录两边式子自身的量级（求值噪声额度按它估）；分两档：Sside 记全部
-      // 探针的全局量级，SsideS 只记小尺度（|t|≤4）探针，供小尺度差分的噪声额度用
       let Sside = 0, SsideS = 0
       const g = (t) => {
         const L = evalSide(parts[0], t, null), R = evalSide(parts[1], t, null)
@@ -2273,16 +2374,9 @@ export default {
         this.eqLines = ['只支持一元一次 / 二次方程', 'x 不能在根号、分母里，也别用 x³']
         return
       }
-      // 小尺度系数估计：二次系数用 ±3 二阶差分（1.5.11：±1 差分在大系数方程里
-      // 相消误差达 19%，±3 差分压到 0.7%）；b 用 ±1 中心差分，c = g(0)
       const c = g0
       const b1 = (g1 - gm) / 2
       const a3 = (g3 + gm3 - 2 * g0) / 18
-      // 校验探针（1.5.10/1.5.12）：±2/±4 与半整数点 ±0.5…±3.5（半整数点专防
-      // 「在全部整数探针点恰好为零」的构造多项式）；探针取值抛错按不支持处理
-      // 1.5.16 再加非 0.5 倍数点 0.3/0.7：旧探针全是 0.5 的倍数，sin(720x) 在
-      // 这些点上恒为 0（720×0.5k = 360k 度），曾被误判恒等式（第十一轮复审
-      // 实证，接口层构造）；0.3 处 sin(216°) ≠ 0，拟合校验当场露馅
       const chkT = [2, -2, 4, -4, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 3.5, -3.5, 0.3, -0.3, 0.7, -0.7], chkV = []
       try {
         for (const t of chkT) { chkV.push(g(t)) }
@@ -2290,17 +2384,6 @@ export default {
         this.eqLines = ['只支持一元一次 / 二次方程', 'x 不能在根号、分母里，也别用 x³']
         return
       }
-      // 多尺度识别（1.5.13，应 ChatGPT 第九份报告）：旧版只在 |x|≤4 采样、显著性门
-      // 与拟合容差又随函数尺度 S 放大——0.0000000001x²+x=1000000000 的二次项在
-      // 小探针上只贡献 1.6e-9、低于大常数带来的 ulp(1e9)≈1.2e-7 求值噪声，被误判
-      // 一次给出假解 x=1e9（真根 916079783.1 与 −10916079783.1）；三次项
-      // x+0.0000000001x³=1000000000 同理。新增大尺度梯子点（抛错/非有限跳过）：
-      // 同一项在 x=±2^24 处贡献 2.8e4，无处可藏。识别改为双尺度：小尺度差分与
-      // 大尺度差分各估一份 (a, b)，显著性按各自尺度的求值噪声额度（8·EPSILON·
-      // 两边量级）判；两尺度的 b 估值、或两份显著的 a 估值超出噪声额度地不一致
-      // ⇒ 不是全局一/二次多项式，报不支持；小尺度看不见但大尺度显著的二次项用
-      // 大尺度估值求解。一次方程的 b 也优先用大尺度估值——大常数偏移下小尺度
-      // 差分带 ulp 级误差、根会跟着偏
       const ladT = [16, -16, 128, -128, 1024, -1024, 8192, -8192, 65536, -65536, 16777216, -16777216], ladV = []
       for (const t of ladT) {
         try { const v = g(t); ladV.push(isFinite(v) ? v : null) } catch (e4) { ladV.push(null) }
@@ -2327,23 +2410,13 @@ export default {
       else if (sigAH) { a = aH; b = bH; aErr = errAH; bErr = errBH }
       else if (bH !== null) { a = 0; b = bH; aErr = 0; bErr = errBH }
       else { a = 0; b = b1; aErr = 0; bErr = errB1 }
-      // 全尺度拟合校验：逐点容差＝采样值变化量的相对项（1e-12）＋系数估计误差在
-      // 该点的放大（aErr·t²＋bErr·|t|），不再用会被大常数撑宽的 1e-8·S 尺度项——
-      // 那正是小非线性项被整个吞掉的通道
       const fitBad = (t, v) => Math.abs(v - (a * t * t + b * t + c)) > 1e-12 * (Sside + Math.abs(v - c)) + aErr * t * t + bErr * Math.abs(t)
       for (let ci = 0; ci < chkT.length; ci++) if (fitBad(chkT[ci], chkV[ci])) { notPoly(); return }
       for (let li = 0; li < ladT.length; li++) if (ladV[li] !== null && fitBad(ladT[li], ladV[li])) { notPoly(); return }
       if (a === 0 && b === 0 && c !== 0) {
-        // 极端尺度救援（1.5.14）：系数小到在全部探针尺度（≤2^24）上被大常数的
-        // 求值噪声淹没时（如 0.000000000000001x=1000000000，x 项贡献 ≤1.7e-8、
-        // 小于 ulp(1e9)），采样判「与 x 无关」直接报无解是错判——式子明明含 x。
-        // 往 1e30/1e100 再探：随 x 显著增长且呈一次型的，用极端尺度差分估 b
-        // 求根；呈高次型的如实报不支持；毫无变化（x−x=5 里 x 真约掉）维持无解
         try {
           const v1 = g(1e30), v2 = g(1e100)
           const d1 = v1 - c, d2 = v2 - c
-          // 显著性按 1e30 处的求值量级判：按 1e100 处的量级判会把门槛随增长
-          // 本身抬过头（1e85 量级直接把 1e15 的一次项信号判死）
           const sig = 1e-9 * Math.max(Math.abs(c), Math.abs(v1))
           if (isFinite(d1) && isFinite(d2) && Math.abs(d1) > sig && Math.abs(d2) > 100 * Math.abs(d1)) {
             const ratio = Math.abs(d2 / d1)
@@ -2371,7 +2444,6 @@ export default {
       this.eqLines = [hints[e.message] || '算式有问题，检查括号和符号']
     }
   },
-  // ---------- 分数计算 ----------
   setFField(f) { this.buzz(); this.fField = f },
   setFop(v) {
     this.buzz()
@@ -2389,9 +2461,6 @@ export default {
     if (r.error) { this.fLines = [r.error]; return }
     const lines = ['= ' + dm(r.d === 1 ? String(r.n) : r.n + '/' + r.d)]
     if (r.mixed) lines.push('带分数：' + dm(r.mixed.w + ' 又 ' + r.mixed.n + '/' + r.mixed.d))
-    // 小数行连接号（1.5.14）：约分后的分母只含 2、5 因子时小数位数有限，且
-    // 页面显示的 6 位有效数字与真值回读一致，才算精确小数用「=」；1/2+1/2
-    // 旧版显示「小数 ≈ 1」，与全应用「精确用 =」的口径冲突（第十份报告观察项）
     let dd = r.d
     while (dd % 2 === 0) dd /= 2
     while (dd % 5 === 0) dd /= 5
@@ -2410,7 +2479,6 @@ export default {
     this.fracSolve()
   },
 
-  // ---------- 根号化简 ----------
   sqrtSolve() {
     const s = this.sqrtN
     if (s === '' || s === '-') { this.sqrtLines = ['输入一个整数试试']; return }
@@ -2418,8 +2486,8 @@ export default {
     const r = calc.simplifySqrt(n)
     if (r.error) { this.sqrtLines = [r.error]; return }
     if (r.rad === 1) this.sqrtLines = ['√' + n + ' = ' + r.coef + '（正好是整数）']
-    else if (r.coef === 1) this.sqrtLines = ['√' + n + ' 已是最简', '≈ ' + calc.formatDisplay(parseFloat(r.dec.toPrecision(6)))]
-    else this.sqrtLines = ['√' + n + ' = ' + r.coef + '√' + r.rad, '≈ ' + calc.formatDisplay(parseFloat(r.dec.toPrecision(6)))]
+    else if (r.coef === 1) this.sqrtLines = ['√' + n + ' 已是最简', '≈ ' + calc.formatDisplay(parseFloat(r.dec.toPrecision(12)))]
+    else this.sqrtLines = ['√' + n + ' = ' + r.coef + '√' + r.rad, '≈ ' + calc.formatDisplay(parseFloat(r.dec.toPrecision(12)))]
   },
   sqrtPad(v) {
     this.buzz()
@@ -2429,7 +2497,6 @@ export default {
     this.sqrtSolve()
   },
 
-  // ---------- 公约数公倍数 ----------
   setGField(f) { this.buzz(); this.gField = f },
   gcdSolve() {
     this.gFvPx = fvPxOf([this.ga, this.gb], false)
@@ -2438,7 +2505,9 @@ export default {
     if (isNaN(a) || isNaN(b)) { this.gLines = ['两个整数都填好就能算']; return }
     const r = calc.gcdLcm(a, b)
     if (r.error) { this.gLines = [r.error]; return }
-    this.gLines = ['最大公约数 = ' + fitResStr(r.gcd, 15), '最小公倍数 = ' + fitResStr(r.lcm, 15)]
+    // 2026-11-15 自查 F8：最小公倍数被 fitResStr 截断时连接号用 ≈（与主页同口径），
+    // 不再硬编码 '='（gcd 本身 ≤999999999 从不截断，仍用 '='）。
+    this.gLines = ['最大公约数 = ' + fitResStr(r.gcd, 15), '最小公倍数 ' + calc.eqSign(r.lcm, fitResStr(r.lcm, 15)) + ' ' + fitResStr(r.lcm, 15)]
   },
   gcdPad(v) {
     this.buzz()
@@ -2450,18 +2519,29 @@ export default {
     this.gcdSolve()
   },
 
-  // ---------- 三角形面积（1.5.20 新工具） ----------
-  // 计算器口径：输三边直接出面积，不展示公式/推导。结果沿用全应用双显：
-  // 精确形（整数/分数/化简根式）＋小数；精确形不可得时只给小数
   setTField(f) { this.buzz(); this.tField = f },
   triSolve() {
     this.tFvPx = fvPxOf([this.ta, this.tb, this.tc], true)
     const a = parseCoeff(this.ta), b = parseCoeff(this.tb), c = parseCoeff(this.tc)
     if (isNaN(a) || isNaN(b) || isNaN(c)) { this.tLines = ['三条边都填好就能算']; return }
+    const ma = parseMono(this.ta), mb = parseMono(this.tb), mc = parseMono(this.tc)
+    const common = !!(ma && mb && mc && ma.qn > 0 && mb.qn > 0 && mc.qn > 0 &&
+      ma.pi === mb.pi && mb.pi === mc.pi && ma.rad === mb.rad && mb.rad === mc.rad)
+    const r0 = common ? calc.triArea(ma.qn / ma.qd, mb.qn / mb.qd, mc.qn / mc.qd) : null
+    if (r0 && r0.error) { this.tLines = [r0.error]; return }
+    if (r0 && r0.type === 'degenerate') { this.tLines = ['退化成一条直线，面积 = 0']; return }
     const r = calc.triArea(a, b, c)
-    if (r.error) { this.tLines = [r.error]; return }
+    if (r.error && !(r0 && r0.type === 'ok')) { this.tLines = [r.error]; return }
     if (r.type === 'degenerate') { this.tLines = ['退化成一条直线，面积 = 0']; return }
-    const dec = FD(r.area)
+    const areaVal = r.error ? r0.area * ma.rad * Math.pow(Math.PI, 2 * ma.pi) : r.area
+    const dec = FD(areaVal)
+    if (common && r0 && r0.type === 'ok' && r0.exact && (ma.pi !== 0 || ma.rad !== 1)) {
+      let cn = r0.exact.cn * ma.rad, cd = r0.exact.cd
+      const g = gcd2(cn, cd) || 1
+      cn /= g; cd /= g
+      const sym = monoStr({ qn: cn, qd: cd, pi: 2 * ma.pi, rad: r0.exact.rad })
+      if (sym && sym.length <= 20) { this.tLines = ['面积 = ' + sym, '≈ ' + dec]; return }
+    }
     if (!r.exact) { this.tLines = ['面积 ≈ ' + dec]; return }
     const e = r.exact
     if (e.rad === 1) {
@@ -2477,7 +2557,7 @@ export default {
     this.buzz()
     const props = { a: 'ta', b: 'tb', c: 'tc' }
     const prop = props[this.tField]
-    const r = editNum(this[prop], v, true)
+    const r = editCoeff(this[prop], v)
     if (r === 'NEXT') {
       const order = ['a', 'b', 'c']
       this.tField = order[(order.indexOf(this.tField) + 1) % 3]
@@ -2487,12 +2567,37 @@ export default {
     this.triSolve()
   },
 
-  // ---------- 函数图象 ----------
+  circSolve() {
+    this.cFvPx = fvPxOf([this.cr], true)
+    const v = parseCoeff(this.cr)
+    if (isNaN(v)) { this.cLines = ['把半径填好就能算']; return }
+    if (v <= 0) { this.cLines = ['半径要大于 0']; return }
+    const C = 2 * Math.PI * v, Av = Math.PI * v * v
+    if (!isFinite(C) || !isFinite(Av)) { this.cLines = ['数字太大，超出精确计算范围']; return }
+    const m = parseMono(this.cr)
+    if (m && m.qn > 0) {
+      const cm = monoMul(m, { qn: 2, qd: 1, pi: 1, rad: 1 })
+      const am = monoMul(monoMul(m, m), { qn: 1, qd: 1, pi: 1, rad: 1 })
+      const cs = cm ? monoStr(cm) : null, as = am ? monoStr(am) : null
+      if (cs && as && cs.length <= 20 && as.length <= 20) {
+        this.cLines = ['周长 = ' + cs, '≈ ' + FD(C), '面积 = ' + as, '≈ ' + FD(Av)]
+        return
+      }
+    }
+    this.cLines = ['周长 ≈ ' + FD(C), '面积 ≈ ' + FD(Av)]
+  },
+  circPad(v) {
+    this.buzz()
+    const r = editCoeff(this.cr, v)
+    if (r === 'NEXT') return
+    this.cr = r
+    this.circSolve()
+  },
+
   backFromPlot() { this.buzz(); this.view = this.plotBack },
   openPlot(kind) {
     this.buzz()
-    if (this.gatePaid()) return
-    // 解方程页的「看图象」入口：把系数换成函数后交给 buildPlot
+    if (this.gatePaid('plot:' + kind)) return
     if (kind === 'quad') {
       const a = parseCoeff0(this.qa), b = parseCoeff0(this.qb), c = parseCoeff0(this.qc)
       if (isNaN(a) || isNaN(b) || isNaN(c) || a === 0) return
@@ -2508,7 +2613,10 @@ export default {
       if (disc > 0) {
         const sq = Math.sqrt(disc)
         const rr1 = (-b + sq) / (2 * a), rr2 = (-b - sq) / (2 * a)
-        lines.push(rootsLine(rr1, rr2, quadRadStrs(a, b, c, rr1, rr2)))
+        // 2026-11-15 自查 F1：交点行按 x1<x2 升序传根，与二次方程页一致
+        //（quadRadStrs 按值配对根式，传升序后配对自动正确）。
+        const rLo = Math.min(rr1, rr2), rHi = Math.max(rr1, rr2)
+        lines.push(rootsLine(rLo, rHi, quadRadStrs(a, b, c, rLo, rHi)))
       }
       else if (disc === 0) lines.push('与 x 轴相切（一个交点）')
       else lines.push('与 x 轴没有交点')
@@ -2534,12 +2642,6 @@ export default {
     }
   },
   buildPlot(cfg) {
-    // 扁平失真自动扩窗（1.5.14）：顶点量级极端时（如 a=0.001、b=999999999 的
-    // 抛物线，顶点 y≈−2.5e20），顶点附近窗口内函数值的变化小于双精度在该量级
-    // 的分辨率，采样点纵坐标全同、画成一条假水平线（ChatGPT 第十份报告实证）。
-    // 先探一遍：纵向变化 ≤8·EPSILON·量级视为「双精度下没变化」，以窗口中心为
-    // 轴逐级 ×8 扩窗再探（上限 6 次）；真常数函数扩窗后仍扁平，照原窗口画其
-    // 水平线（那是真形状）
     const probeFlat = (x0, x1) => {
       let mn = Infinity, mx = -Infinity, n = 0
       for (let i = 0; i <= 30; i++) {
@@ -2563,11 +2665,6 @@ export default {
     }
     const N = 90
     let ymin = Infinity, ymax = -Infinity
-    // 采样值上限改自适应（1.5.12）：旧版固定 |y|≤1e6 把大斜率直线（y=1e8x+1e8）、
-    // 大振幅正弦（1e7·sin x）的合法采样点几乎全过滤掉、整图画不出来
-    //（ChatGPT 第八份报告实证）。改按采样 |y| 中位数定上限（max(1e6, 200×中位数)）：
-    // 普通函数行为不变（中位数小、上限仍是 1e6，tan 渐近线尖峰照旧被滤），
-    // 整体量级大的函数按自身量级放行
     const raw = []
     for (let i = 0; i <= N; i++) {
       const x = cfg.x0 + (cfg.x1 - cfg.x0) * i / N
@@ -2579,12 +2676,6 @@ export default {
     const mags = raw.map(function (pt) { return Math.abs(pt.y) }).sort(function (p, q) { return p - q })
     const med = mags.length ? mags[Math.floor(mags.length / 2)] : 0
     const cap = Math.max(1e6, 200 * med)
-    // 边沿单调豁免（1.5.16）：中位数上限是为压反比例/tan 的渐近尖峰（尖峰是夹在
-    // 曲线中间的大值段）；指数曲线尾部的大值段贴着采样区边沿且单调，是合法曲线
-    // 不是尖峰——旧版把 10ˣ 在 ±8 窗口的尾部（y 达 1e8）整段砍掉、图右侧空出
-    // 一截（第十一轮复审实证：91 个采样点只画 79 个）。判据：超 cap 的连续段
-    // 若贴住采样首/尾、且段内 |y| 单调（同向变化），整段豁免；中间段照旧滤，
-    // 渐近尖峰（含 |y| 先升后降、或正负翻转的段）不受影响
     const overCap = raw.map(function (pt) { return Math.abs(pt.y) > cap })
     const exempt = []
     for (let i = 0; i < raw.length; i++) exempt.push(false)
@@ -2615,13 +2706,9 @@ export default {
       if (pt.y > ymax) ymax = pt.y
     }
     if (pts.length < 2) return false
-    // 纵轴强行纳入 0 只在 0 离数据范围不远时做（1.5.14）：顶点在 −2.5e20 的
-    // 抛物线若强行把范围拉到 0，1e6 级的真实起伏又被压回一条线（与扩窗同源）
     const spanY0 = ymax - ymin
     if (ymin > 0 && ymin <= spanY0 * 4) ymin = 0
     if (ymax < 0 && -ymax <= spanY0 * 4) ymax = 0
-    // 关键点纳入纵轴范围（1.5.10）：采样步长照不到的极值关键点（如 sin 的 90° 峰值不在 8° 采样格上）
-    // 旧版靠 8% 留白偶然兜住；纳入后再加留白，保证关键点结构上不被范围过滤掉。
     for (const kp of (cfg.keyPts || [])) {
       if (kp.x >= cfg.x0 && kp.x <= cfg.x1 && isFinite(kp.y)) {
         if (kp.y < ymin) ymin = kp.y
@@ -2640,36 +2727,18 @@ export default {
     }).map(function (pt) { return { l: px(pt.x) - 4, t: py(pt.y) - 4 } })
     this.plotAxisL = (0 >= x0 && 0 <= x1) ? px(0) : -10
     this.plotAxisT = (0 >= ymin && 0 <= ymax) ? py(0) : -10
-    // 坐标轴刻度+数字：单位长度随量程自动分档；轴不在画面内时退到画布边缘标尺
     const baseT = this.plotAxisT >= 0 ? this.plotAxisT : H - 10
     const baseL = this.plotAxisL >= 0 ? this.plotAxisL : 10
-    // 刻度标签去重（1.5.18，B-02）：极端窗口下步长细于该量级双精度可分辨
-    // 粒度时，相邻刻度标签会塌成同一文本（a=0.001、b=999999999 的抛物线
-    // Y 轴 7 个标签只有 2 种，第十二轮复审实证）。生成后若相邻显示标签
-    // 重复则步长翻倍重算，直到两两可区分；标签只剩 2 个时停（下限防刻
-    // 度消失）。正常参数无重复、首轮即定，刻度数与旧版一致
     const labDup = function (labs) {
       for (let i2 = 1; i2 < labs.length; i2++) if (labs[i2].lab === labs[i2 - 1].lab) return true
       return false
     }
-    // 标签盒宽（1.5.19 同版修订四）：修订三把标签文本缩短了，但模板里
-    // 标签盒仍写死 X 24px / Y 26px——9 字标签（如 −2.5×10²⁰）塞进
-    // 26px 盒仍折成两三截竖排（velasim 复拍实证；凡 Y 标签 >5 字都中
-    // 招、不止 H 例）。盒宽改在生成标签时按字数给出（模板 width 绑
-    // $item.lw）：tick-lab 为 10px 字号，数字/符号约 6px/字、上标更
-    // 窄，按 6px/字估算＋8px 余量即单行有余；≤4 字回到旧盒宽
-    // （X 24 / Y 26），短标签的 ll/lt/ta 与旧版逐字一致
     const labW = function (lab, base) { return lab.length <= 4 ? base : lab.length * 6 + 8 }
     let stepX = niceStep(x1 - x0, 8)
     let stepY = niceStep(ymax - ymin, 8)
     let tX = [], tY = [], lX = [], lY = []
     for (let iter = 0; iter < 60; iter++) {
       tX = []; lX = []
-      // 推进守卫（1.5.19 同版修订）：极端量程下刻度索引 |k| 可达 2^53 以上
-      //（二次函数顶点在 1e17 量级时 X 轴 k≈5e16），双精度下 k++ 不再前进、
-      // 旧版原地死循环（实测 8 秒不返回）；推进值不严格变大即跳出，另设
-      // 迭代上限兜底，保证任何输入下有界返回。正常量程 k 严格递增、计数
-      // 约 10 个，守卫永不触发、行为逐字不变
       let prevKX = null, guardX = 0
       for (let k = Math.ceil(x0 / stepX); k <= Math.floor(x1 / stepX); k++) {
         if (k === prevKX || ++guardX > 1000) break
@@ -2679,7 +2748,6 @@ export default {
         const cx = px(v)
         tX.push({ ml: cx, mt: baseT - 3 })
         if (cx >= 14 && cx <= 298) {
-          // 居中标签以刻度点为中心按盒宽展开、ll 钳在绘图区内（修订四）
           const labX = fmtTick(v, stepX), lwX = labW(labX, 24)
           let llX = cx - lwX / 2
           if (llX < 0) llX = 0
@@ -2690,16 +2758,9 @@ export default {
       if (!labDup(lX) || lX.length <= 2) break
       stepX *= 2
     }
-    // 退出后仍重复的兜底（1.5.19，B-02 补漏）：旧退出条件在标签只剩 2 个
-    // 时无条件收工，哪怕两个标签文本仍相同（第十三轮复审静态查出）；60
-    // 次迭代耗尽同理。宁可只留 1 个标签（取中点那个、量程位置最有代表
-    // 性），也不许把重复标签当成功结果交付
     if (labDup(lX)) lX = [lX[Math.floor(lX.length / 2)]]
     for (let iter = 0; iter < 60; iter++) {
       tY = []; lY = []
-      // 推进守卫（1.5.19 同版修订）：同 X 轴——顶点纵坐标在 1e30 量级且窗
-      // 内扁平时 Y 轴步长只有 2e-4、刻度索引 k≈−5e33，k++ 不再前进、旧版
-      // 死循环（注入计数实证：Y 循环 300 万次不退出，X 循环仅 11 次）
       let prevKY = null, guardY = 0
       for (let k = Math.ceil(ymin / stepY); k <= Math.floor(ymax / stepY); k++) {
         if (k === prevKY || ++guardY > 1000) break
@@ -2711,10 +2772,6 @@ export default {
         if (cy >= 6 && cy <= 282) {
           const labY = fmtTick(v, stepY), lwY = labW(labY, 26)
           if (baseL >= 36) {
-            // 右对齐标签：盒右缘锚定轴线左侧 5px（baseL − 5）、盒向左
-            // 展开（修订四）。左端放不下时 ll 钳到 0 并把盒宽收至锚点
-            // ——右缘与右对齐不变，字不跨轴压曲线；代价是该极端下盒宽
-            // 小于估宽、靠上标实际窄于 6px/字的余量兜底（见修订四头注）
             let llY = baseL - 5 - lwY, wY = lwY
             if (llY < 0) { llY = 0; wY = baseL - 5 }
             lY.push({ lab: labY, ll: llY, lt: cy - 6, ta: 'right', lw: wY })
@@ -2726,18 +2783,6 @@ export default {
     }
     if (labDup(lY)) lY = [lY[Math.floor(lY.length / 2)]] // 同 X 轴兜底（1.5.19）
     if (this.plotAxisL >= 0 && this.plotAxisT >= 0) lX.push({ lab: '0', ll: this.plotAxisL + 4, lt: this.plotAxisT + 4, ta: 'left', lw: labW('0', 24) })
-    // 标签碰撞消解（1.5.20，N-03）：修订四把盒宽按字数给足后，相邻标签仍
-    // 可整体交叠——a=1、b=999999999、c=0 的 X 轴 7 个标签（盒宽达 92px、
-    // 相邻仅差 18–45px）实测 6 组交叠，修订四只有给宽、没有碰撞检查。
-    // 生成后（含后加的原点 '0'）按「文本实际占用区间」扫除：占用宽沿修
-    // 订四同一估宽口径（字数×6px、上限为盒宽 lw），按 ta 在盒内定位
-    //（left 左锚、right 右锚、center 居中）；同轴按占用左端排序，贪心保
-    // 留、与已保留者交叠（须留 ≥2px 间隙）的后出现者丢弃，刻度记号不动。
-    // 用占用区间而非盒宽判定，是为了原点 '0' 这类「短文本宽盒」标签：
-    // 其盒与相邻居中标签盒交叠、但文本不交叠（正常基线 §10d 钉注形态），
-    // 按盒判定会误伤基线。Y 轴同理按纵向占用（lt 起、行高 12px＝10px 字
-    // 号单行高）扫除。扫除只删不改：保留标签的 ll/lt/ta/lw 与原数组顺序
-    //（基线钉注的呈现顺序）逐字不变
     const labOccX = function (t) {
       const tw = Math.min(t.lw, t.lab.length * 6)
       if (t.ta === 'left') return [t.ll, t.ll + tw]
@@ -2773,7 +2818,6 @@ export default {
     return true
   },
 
-  // ---------- 函数图象设置页 ----------
   plotTypeDef() {
     for (const t of PLOT_TYPES) if (t.id === this.plotType) return t
     return PLOT_TYPES[0]
@@ -2793,7 +2837,6 @@ export default {
   setPlotType(id) {
     this.buzz()
     this.plotType = id
-    // 指数/对数的底数不能为 1；a 还留着二次函数的默认 1 时自动给个合法的 2
     if ((id === 'exp' || id === 'log') && parseCoeff(this.plotVals.a) === 1) this.plotVals.a = '2'
     this.plotCfgLines = ['填好系数，点「画图象」']
     this.syncPlotFields()
@@ -2801,7 +2844,7 @@ export default {
   setPlotField(k) { this.buzz(); this.plotField = k },
   plotPad(v) {
     this.buzz()
-    const r = editNum(this.plotVals[this.plotField], v, true)
+    const r = editCoeff(this.plotVals[this.plotField], v)
     if (r === 'NEXT') {
       const defs = this.plotTypeDef().fields
       let idx = 0
@@ -2814,7 +2857,7 @@ export default {
   },
   drawPlot() {
     this.buzz()
-    if (this.gatePaid()) return
+    if (this.gatePaid('plotcfg')) return
     const V = {}
     const def = this.plotTypeDef()
     for (const f of def.fields) {
@@ -2953,7 +2996,9 @@ export default {
 .key-t-eq { color: #FFFFFF; }
 .pad-sm { padding-left: 6px; }
 .key-sm { width: 74px; height: 42px; border-radius: 14px; }
+.key-c5 { width: 58px; }
 .eqkey { width: 74px; height: 36px; border-radius: 12px; }
+.eqkey-c5 { width: 58px; }
 .eqkey-s { height: 28px; }
 .eqgo { background-color: #7A93AC; border-color: #7A93AC; }
 .eqgo-t { color: #FFFFFF; font-weight: bold; }
@@ -3034,6 +3079,8 @@ export default {
 .q-fv { font-size: 20px; font-weight: bold; color: #232A33; lines: 1; text-overflow: ellipsis; padding-left: 4px; }
 .q-res { width: 312px; margin-left: 12px; height: 106px; flex-direction: column; padding-top: 8px; }
 .q-res-s { height: 60px; }
+.q-res-l { height: 140px; }
+.q-line-s { font-size: 17px; line-height: 20px; margin-bottom: 2px; }
 .q-fields-sys { height: 52px; }
 .key-sys { height: 34px; }
 .q-line { font-size: 19px; color: #232A33; margin-bottom: 3px; line-height: 22px; padding-left: 6px; lines: 1; text-overflow: ellipsis; }

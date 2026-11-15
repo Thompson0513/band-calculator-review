@@ -39,12 +39,14 @@ function loadPage(storageImpl) {
   globalThis.__storage = storageImpl
   globalThis.__vibrator = { vibrate() {} }
   globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210' }) } }
+  globalThis.__router = { push() {}, back() {} }
   globalThis.__calc = calc
   globalThis.__paykey = paykeyMod
   script = script
     .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
     .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
     .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
     .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
     .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
     .replace('export default', 'module.exports =')
@@ -241,7 +243,7 @@ eq('9d 相消尾巴仍判相等', eqSolveLines('0.1+0.2−0.3=0')[0], '两边相
   const lines = eqSolveLines('0.3333333334x²−3x+1=0')
   ok('13c 方程页根式行带 ≈（' + lines[2] + '）', lines.some((l) => l.indexOf('x1 ≈ ') === 0))
   const exactLines = eqSolveLines('x²−2=0')
-  ok('13d 精确系数根式等号不回归（' + exactLines[2] + '）', exactLines.some((l) => l.indexOf('x1 = √2') === 0))
+  ok('13d 精确系数根式等号不回归（1.6.0 自查 B4 修订：x1 为负根）（' + exactLines[2] + '）', exactLines.some((l) => l.indexOf('x1 = −√2') === 0))
   const fr = calc.solveQuad(1 / 3, 0, -2)
   const frads = quadRadStrs(1 / 3, 0, -2, fr.x1, fr.x2)
   eq('13e 分数输入系数 exact=true', frads && frads.exact, true)

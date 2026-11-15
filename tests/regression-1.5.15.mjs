@@ -39,12 +39,14 @@ function loadPage(storageImpl) {
   globalThis.__storage = storageImpl
   globalThis.__vibrator = { vibrate() {} }
   globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210' }) } }
+  globalThis.__router = { push() {}, back() {} }
   globalThis.__calc = calc
   globalThis.__paykey = paykeyMod
   script = script
     .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
     .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
     .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
     .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
     .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
     .replace('export default', 'module.exports =')
@@ -135,7 +137,7 @@ eq('M10 判别式负值行', eqSolveLines('x²+x+999999')[1], '判别式 Δ = �
   ok('M12 分数页负结果（' + j.fLines.join('|') + '）', j.fLines.join('|').indexOf('= −1/4') >= 0 && j.fLines.join('|').indexOf('小数 = −0.25') >= 0)
   const k = makeInst()
   k.qa = '1'; k.qb = '0'; k.qc = '-2'; k.quadSolve()
-  eq('M13 二次页根式负根行', k.qLines[2], 'x2 = −√2 ≈ −1.41421356237')
+  eq('M13 二次页根式负根行（1.6.0 自查 B4 修订：负根现为 x1）', k.qLines[1], 'x1 = −√2 ≈ −1.41421356237')
 }
 eq('M14 dm 指数负号保护', dm('-1.5e-7'), '−1.5e-7')
 eq('M15 dm 分数串', dm('-3/4'), '−3/4')

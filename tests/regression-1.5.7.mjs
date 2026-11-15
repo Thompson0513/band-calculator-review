@@ -1,3 +1,4 @@
+// 二次方程两根恒按 x1<x2 升序；A2 bases 的 roots 数据仍按旧降序写，断言取反向下标；A3 小根/大根下标互换。
 // 回归测试 1.5.7：ChatGPT 第三份报告（对 GitHub 审查仓 1.5.6 的独立审计）逐项实跑核实后的修复
 // A.solveQuad 判别式容差带 Math.max(1, …) 绝对下限：方程整体缩小后
 // 真判别式被阈值吞掉——x²−1e-13=0 误报重根 0（应为两实根 ±3.1622776601683795e-7），
@@ -45,12 +46,14 @@ const memStore = {}
 globalThis.__storage = { get(o) { o.success(memStore[o.key] || '')}, set(o) { memStore[o.key] = o.value}}
 globalThis.__vibrator = { vibrate() {}}
 globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210'})}}
+  globalThis.__router = { push() {}, back() {} }
 globalThis.__calc = calc
 globalThis.__paykey = paykeyMod
 script = script
 .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
 .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
 .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
 .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
 .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
 .replace('export default', 'module.exports =')
@@ -101,7 +104,7 @@ for (const b of bases) {
 for (const s of scales) {
 const r = calc.solveQuad(b.abc[0] * s, b.abc[1] * s, b.abc[2] * s)
 eq('A2 尺度 ' + s + ' · ' + b.abc.join(',') + ' type', r.type, b.type)
-if (r.type === 'two') { approx('A2 尺度 ' + s + ' x1', r.x1, b.roots[0], 1e-6); approx('A2 尺度 ' + s + ' x2', r.x2, b.roots[1], 1e-6)}
+if (r.type === 'two') { approx('A2 尺度 ' + s + ' x1', r.x1, b.roots[1], 1e-6); approx('A2 尺度 ' + s + ' x2', r.x2, b.roots[0], 1e-6)} // bases 的 roots 仍按旧降序写，断言取反向下标
 if (r.type === 'one') approx('A2 尺度 ' + s + ' x', r.x, b.roots[0], 1e-6)
 if (r.type === 'complex') approx('A2 尺度 ' + s + ' im', r.im, b.roots[0], 1e-6)
 }
@@ -111,8 +114,18 @@ if (r.type === 'complex') approx('A2 尺度 ' + s + ' im', r.im, b.roots[0], 1e-
 // ---------- A3. 守卫：旧口径不回退 ----------
 eq('A3 小数系数假重根仍判重根', calc.solveQuad(0.1, 0.7, 1.225).type, 'one')
 approx('A3 假重根值', calc.solveQuad(0.1, 0.7, 1.225).x, -3.5)
-eq('A3 判别式溢出仍报错', calc.solveQuad(1, 1e308, 1).error, '数字太大，超出精确计算范围')
-eq('A3 b² 溢出成 NaN 仍报错（锁定：有限门先于归一化）', calc.solveQuad(1e200, 1e200, 1e200).error, '数字太大，超出精确计算范围')
+{
+const r = calc.solveQuad(1, 1e308, 1)
+eq('A3【1.5.20 修订】b=1e308 归一化后判两根（旧期望：判别式溢出仍报错；N-05 定版先归一化、归一化后仍真溢出才报错，本例两根均可表示）', r.type, 'two')
+approx('A3【1.5.20 修订】b=1e308 小根', r.x2, -1e-308, 1e-3)
+approx('A3【1.5.20 修订】b=1e308 大根', r.x1, -1e308, 1e-6)
+}
+{
+const r = calc.solveQuad(1e200, 1e200, 1e200)
+eq('A3【1.5.20 修订】等系数 1e200 归一化后判复数根（旧期望：b² 溢出成 NaN 仍报错、「有限门先于归一化」锁定被 N-05 定版取代）', r.type, 'complex')
+approx('A3【1.5.20 修订】等系数复根实部', r.re, -0.5)
+approx('A3【1.5.20 修订】等系数复根虚部', r.im, Math.sqrt(3) / 2)
+}
 {
 const r = calc.solveQuad(1, 1e16, 1) // 1.5.6 C 组守卫：韦达小根 −1e-16 不许被归零/丢失
 eq('A3 大系数小根 type', r.type, 'two')
@@ -127,7 +140,7 @@ approx('A3 消去守卫小根', small2, -1.000000001e-9, 1e-6)
 // 整数方程精确性守卫：归一化只许在极端尺度介入，普通整数方程必须保持精确根
 {
 const r = calc.solveQuad(1, -5, 6)
-eq('A3 整数方程 x1 精确', r.x1, 3); eq('A3 整数方程 x2 精确', r.x2, 2)
+eq('A3 整数方程 x1 精确', r.x1, 2); eq('A3 整数方程 x2 精确', r.x2, 3)
 const s = calc.solveSystem(2, 1, 5, 1, -1, 1)
 eq('A3 整数方程组 x 精确', s.x, 2); eq('A3 整数方程组 y 精确', s.y, 1)
 }

@@ -38,17 +38,17 @@ eq('eqin 纯算式行', ansStr('', 4 / 27, 27), '= 4/27 ≈ 0.148148148148')
 
 // ---------- 2) 无理根 / 整数根：不加分数，保持原格式 ----------
 { const r = calc.solveQuad(1, 0, -2)
-  eq('无理根 x1', ansStr('x1', r.x1, 28), 'x1 ≈ 1.41421356237')
+  eq('无理根 x1', ansStr('x1', r.x1, 28), 'x1 ≈ −1.41421356237')
   ok('无理根 x2 无分数', ansStr('x2', r.x2, 28).indexOf('/') < 0, ansStr('x2', r.x2, 28)) }
 { const r = calc.solveQuad(1, -3, 2)
-  eq('整数根 x1', ansStr('x1', r.x1, 28), 'x1 = 2')
-  eq('整数根 x2', ansStr('x2', r.x2, 28), 'x2 = 1') }
+  eq('整数根 x1', ansStr('x1', r.x1, 28), 'x1 = 1')
+  eq('整数根 x2', ansStr('x2', r.x2, 28), 'x2 = 2') }
 eq('零根不加分数', ansStr('x', 0, 27), 'x = 0')
 
 // ---------- 3) 二次方程有理根 ----------
 { const r = calc.solveQuad(2, -3, 1)
-  eq('有理根整数 x1', ansStr('x1', r.x1, 28), 'x1 = 1')
-  eq('有理根分数 x2', ansStr('x2', r.x2, 28), 'x2 = 1/2 = 0.5') }
+  eq('有理根整数 x1', ansStr('x1', r.x1, 28), 'x1 = 1/2 = 0.5')
+  eq('有理根分数 x2', ansStr('x2', r.x2, 28), 'x2 = 1') }
 { const r = calc.solveQuad(1, 2, 1); eq('重根', ansStr('x', r.x, 28), 'x = −1') }
 
 // ---------- 4) 方程组：x/y 各自并列 ----------

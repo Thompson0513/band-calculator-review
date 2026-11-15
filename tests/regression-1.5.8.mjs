@@ -53,12 +53,14 @@ let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
 globalThis.__storage = storageImpl
 globalThis.__vibrator = { vibrate() {}}
 globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210'})}}
+  globalThis.__router = { push() {}, back() {} }
 globalThis.__calc = calc
 globalThis.__paykey = paykeyMod
 script = script
 .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
 .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
 .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
 .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
 .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
 .replace('export default', 'module.exports =')
@@ -153,7 +155,7 @@ eq('F (2+3)4 结果', inst3.resDisp, '= 20')
 const inst = makeInst(); inst.unlocked = true
 inst.expr = '1e308×1e308'
 inst.refreshCalc()
-eq('G 溢出预览显示（1.5.14 改错误状态口径：无 ≈、previewOk=false，见 regression-1.5.14 J）', inst.resDisp, '溢出')
+eq('G 溢出预览显示（1.6.0 自查 B10 复核：引擎溢出返回 Infinity、页面显示「溢出」为既定口径，见 regression-1.5.14 J）', inst.resDisp, '溢出')
 inst.pressKey('eq')
 eq('G 按 = 后 lastAns 不被污染', inst.lastAns, '')
 eq('G 按 = 后不记历史', inst.hist.length, 0)

@@ -49,12 +49,14 @@ let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
 globalThis.__storage = storageImpl
 globalThis.__vibrator = { vibrate() {}}
 globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210'})}}
+  globalThis.__router = { push() {}, back() {} }
 globalThis.__calc = calc
 globalThis.__paykey = paykeyMod
 script = script
 .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
 .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
 .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
 .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
 .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
 .replace('export default', 'module.exports =')
@@ -97,12 +99,12 @@ return inst
 {
   const inst = makeInst(); inst.unlocked = true
   inst.eqExpr = '0.0000001x^2-0.0000003x+0.0000002=0'; inst.eqExpr2 = ''; inst.eqSolve()
-  ok('A 小系数真二次给根 1 与 2（got=' + JSON.stringify(inst.eqLines) + '）', inst.eqLines.some(l => l.indexOf('x1 = 2') === 0) && inst.eqLines.some(l => l.indexOf('x2 = 1') === 0))
+  ok('A 小系数真二次给根 1 与 2（1.6.0 自查 B4 修订：x1<x2）（got=' + JSON.stringify(inst.eqLines) + '）', inst.eqLines.some(l => l.indexOf('x1 = 1') === 0) && inst.eqLines.some(l => l.indexOf('x2 = 2') === 0))
 }
 {
   const inst = makeInst(); inst.unlocked = true
   inst.eqExpr = '1000000x^2-3000000x+2000000=0'; inst.eqExpr2 = ''; inst.eqSolve()
-  ok('A 大系数二次不回退', inst.eqLines.some(l => l.indexOf('x1 = 2') === 0))
+  ok('A 大系数二次不回退（1.6.0 自查 B4 修订：x1 为小根 1）', inst.eqLines.some(l => l.indexOf('x1 = 1') === 0))
   const inst2 = makeInst(); inst2.unlocked = true
   inst2.eqExpr = 'x+y=3'; inst2.eqExpr2 = 'x-y=1'; inst2.eqSolve()
   eq('A 常规方程组不回退 x', inst2.eqLines[0], 'x = 2')

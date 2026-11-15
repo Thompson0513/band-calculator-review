@@ -1,3 +1,4 @@
+// 二次方程两根恒按 x1<x2 升序（教材惯例）；本文件 A 组根式行与 plot 交点行按新顺序翻转期望，根值本身不变。
 // 回归测试 1.5.4：卡西欧 fx-991 口径对齐两处
 // A. 二次方程无理根给根式精确形（quad 页 / eqin 二次路径 / 图象交点行；复数根虚部同理）
 //    系数走 calc.toFraction 精确恢复为有理数后算 (P ± Q√m)/R 并约分到最简；
@@ -33,28 +34,28 @@ const { quadRadStrs, radAnsStr, quadImRad, cplxRadStr, rootsLine, linePx, ansStr
 
 // ---------- A1 函数层：实根根式组装与约分 ----------
 let r = calc.solveQuad(1, 0, -2)
-eq('x²−2 两根根式', JSON.stringify(quadRadStrs(1, 0, -2, r.x1, r.x2)), JSON.stringify({ x1: '√2', x2: '−√2', exact: true }))
-eq('x²−2 x1 行：根式在前小数在后', radAnsStr('x1', r.x1, '√2', 28), 'x1 = √2 ≈ 1.41421356237')
-eq('x²−2 x2 行', radAnsStr('x2', r.x2, '−√2', 28), 'x2 = −√2 ≈ −1.41421356237')
+eq('x²−2 两根根式', JSON.stringify(quadRadStrs(1, 0, -2, r.x1, r.x2)), JSON.stringify({ x1: '−√2', x2: '√2', exact: true }))
+eq('x²−2 x1 行：根式在前小数在后', radAnsStr('x1', r.x1, '−√2', 28), 'x1 = −√2 ≈ −1.41421356237')
+eq('x²−2 x2 行', radAnsStr('x2', r.x2, '√2', 28), 'x2 = √2 ≈ 1.41421356237')
 r = calc.solveQuad(2, -3, -1)
-eq('2x²−3x−1 两根根式', JSON.stringify(quadRadStrs(2, -3, -1, r.x1, r.x2)), JSON.stringify({ x1: '(3+√17)/4', x2: '(3−√17)/4', exact: true }))
-eq('(3+√17)/4 答案行', radAnsStr('x1', r.x1, '(3+√17)/4', 28), 'x1 = (3+√17)/4 ≈ 1.780776406')
-eq('(3−√17)/4 答案行', radAnsStr('x2', r.x2, '(3−√17)/4', 28), 'x2 = (3−√17)/4 ≈ −0.28077641')
+eq('2x²−3x−1 两根根式', JSON.stringify(quadRadStrs(2, -3, -1, r.x1, r.x2)), JSON.stringify({ x1: '(3−√17)/4', x2: '(3+√17)/4', exact: true }))
+eq('(3+√17)/4 答案行', radAnsStr('x1', r.x1, '(3−√17)/4', 28), 'x1 = (3−√17)/4 ≈ −0.28077641')
+eq('(3−√17)/4 答案行', radAnsStr('x2', r.x2, '(3+√17)/4', 28), 'x2 = (3+√17)/4 ≈ 1.780776406')
 r = calc.solveQuad(2, -8, 2)
-eq('2x²−8x+2 化简约分 (8±4√3)/4 → 2±√3', JSON.stringify(quadRadStrs(2, -8, 2, r.x1, r.x2)), JSON.stringify({ x1: '2+√3', x2: '2−√3', exact: true }))
-eq('2+√3 答案行', radAnsStr('x1', r.x1, '2+√3', 28), 'x1 = 2+√3 ≈ 3.73205080757')
+eq('2x²−8x+2 化简约分 (8±4√3)/4 → 2±√3', JSON.stringify(quadRadStrs(2, -8, 2, r.x1, r.x2)), JSON.stringify({ x1: '2−√3', x2: '2+√3', exact: true }))
+eq('2+√3 答案行', radAnsStr('x1', r.x1, '2−√3', 28), 'x1 = 2−√3 ≈ 0.267949192431')
 r = calc.solveQuad(1, 0, -12)
-eq('x²−12 带系数根式 2√3', JSON.stringify(quadRadStrs(1, 0, -12, r.x1, r.x2)), JSON.stringify({ x1: '2√3', x2: '−2√3', exact: true }))
+eq('x²−12 带系数根式 2√3', JSON.stringify(quadRadStrs(1, 0, -12, r.x1, r.x2)), JSON.stringify({ x1: '−2√3', x2: '2√3', exact: true }))
 r = calc.solveQuad(1, 1, -1)
-eq('x²+x−1 黄金根 (−1±√5)/2', JSON.stringify(quadRadStrs(1, 1, -1, r.x1, r.x2)), JSON.stringify({ x1: '(−1+√5)/2', x2: '(−1−√5)/2', exact: true }))
+eq('x²+x−1 黄金根 (−1±√5)/2', JSON.stringify(quadRadStrs(1, 1, -1, r.x1, r.x2)), JSON.stringify({ x1: '(−1−√5)/2', x2: '(−1+√5)/2', exact: true }))
 r = calc.solveQuad(3, 0, -1)
-eq('3x²−1 分式根式 √3/3', JSON.stringify(quadRadStrs(3, 0, -1, r.x1, r.x2)), JSON.stringify({ x1: '√3/3', x2: '−√3/3', exact: true }))
+eq('3x²−1 分式根式 √3/3', JSON.stringify(quadRadStrs(3, 0, -1, r.x1, r.x2)), JSON.stringify({ x1: '−√3/3', x2: '√3/3', exact: true }))
 r = calc.solveQuad(-1, 0, 2)
 eq('a<0 时根与 ± 正确配对', JSON.stringify(quadRadStrs(-1, 0, 2, r.x1, r.x2)), JSON.stringify({ x1: '−√2', x2: '√2', exact: true }))
 
 // ---------- A2 函数层：回退口径（不硬凑） ----------
 r = calc.solveQuad(0.5, 0, -1)
-eq('分数系数 (1/2)x²−1 仍出根式', JSON.stringify(quadRadStrs(0.5, 0, -1, r.x1, r.x2)), JSON.stringify({ x1: '√2', x2: '−√2', exact: true }))
+eq('分数系数 (1/2)x²−1 仍出根式', JSON.stringify(quadRadStrs(0.5, 0, -1, r.x1, r.x2)), JSON.stringify({ x1: '−√2', x2: '√2', exact: true }))
 r = calc.solveQuad(1, 0.5, -0.5)
 eq('Δ 为完全平方（根有理）不走根式', quadRadStrs(1, 0.5, -0.5, r.x1, r.x2), null)
 r = calc.solveQuad(1, -3, 2)
@@ -81,16 +82,16 @@ eq('虚部有理（x²+1）不走根式，回落既有行', quadImRad(1, 0, 1, r
 // ---------- A4 函数层：图象交点行 ----------
 r = calc.solveQuad(1, 0, -2)
 const pl1 = rootsLine(r.x1, r.x2, quadRadStrs(1, 0, -2, r.x1, r.x2))
-eq('plot 交点 √2 并列行', pl1, '与 x 轴交点 x = √2 ≈ 1.41、−√2')
+eq('plot 交点 √2 并列行', pl1, '与 x 轴交点 x = −√2、√2 ≈ 1.41')
 ok('plot √2 行守 linePx ≤300', linePx(pl1) <= 300)
 r = calc.solveQuad(3, 0, -1)
 const pl2 = rootsLine(r.x1, r.x2, quadRadStrs(3, 0, -1, r.x1, r.x2))
-eq('plot 交点 √3/3 只给根式形（塞不下小数）', pl2, '与 x 轴交点 x = √3/3、−√3/3')
+eq('plot 交点 √3/3 只给根式形（塞不下小数）', pl2, '与 x 轴交点 x = −√3/3、√3/3')
 ok('plot √3/3 行守 linePx ≤300', linePx(pl2) <= 300)
 r = calc.solveQuad(2, -8, 2)
-eq('plot 交点 2±√3', rootsLine(r.x1, r.x2, quadRadStrs(2, -8, 2, r.x1, r.x2)), '与 x 轴交点 x = 2+√3、2−√3')
+eq('plot 交点 2±√3', rootsLine(r.x1, r.x2, quadRadStrs(2, -8, 2, r.x1, r.x2)), '与 x 轴交点 x = 2−√3、2+√3')
 r = calc.solveQuad(2, -3, -1)
-eq('plot (3±√17)/4 整行超宽门时回退 DP 小数行（绝不溢出）', rootsLine(r.x1, r.x2, quadRadStrs(2, -3, -1, r.x1, r.x2)), '与 x 轴交点 x = 1.7808、−0.2808')
+eq('plot (3±√17)/4 整行超宽门时回退 DP 小数行（绝不溢出）', rootsLine(r.x1, r.x2, quadRadStrs(2, -3, -1, r.x1, r.x2)), '与 x 轴交点 x = −0.2808、1.7808')
 eq('无 rads 调用与 1.5.2 行为一致', rootsLine(1, 0.5), '与 x 轴交点 x = 1、1/2 = 0.5')
 
 // ---------- 页面实例行为（与 run-tests 同法加载真实页面脚本） ----------
@@ -109,12 +110,14 @@ const memStore = {}
 globalThis.__storage = { get(o) { o.success(memStore[o.key] || '') }, set(o) { memStore[o.key] = o.value } }
 globalThis.__vibrator = { vibrate() {} }
 globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210' }) } }
+  globalThis.__router = { push() {}, back() {} }
 globalThis.__calc = calc
 globalThis.__paykey = paykeyMod
 script = script
   .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
   .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
   .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
   .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
   .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
   .replace('export default', 'module.exports =')
@@ -133,34 +136,34 @@ function makeInst() {
 let inst = makeInst()
 inst.qa = '1'; inst.qb = '0'; inst.qc = '-2'; inst.quadSolve()
 eq('quad 页 Δ 行不变', inst.qLines[0], '判别式 Δ = 8 > 0')
-eq('quad 页 x²−2 x1 行', inst.qLines[1], 'x1 = √2 ≈ 1.41421356237')
-eq('quad 页 x²−2 x2 行', inst.qLines[2], 'x2 = −√2 ≈ −1.41421356237')
+eq('quad 页 x²−2 x1 行', inst.qLines[1], 'x1 = −√2 ≈ −1.41421356237')
+eq('quad 页 x²−2 x2 行', inst.qLines[2], 'x2 = √2 ≈ 1.41421356237')
 inst.qa = '2'; inst.qb = '-3'; inst.qc = '-1'; inst.quadSolve()
-eq('quad 页 (3+√17)/4 行', inst.qLines[1], 'x1 = (3+√17)/4 ≈ 1.780776406')
+eq('quad 页 (3+√17)/4 行', inst.qLines[1], 'x1 = (3−√17)/4 ≈ −0.28077641')
 inst.qa = '1/2'; inst.qb = '0'; inst.qc = '-1'; inst.quadSolve()
-eq('quad 页分数系数（parseCoeff 路径）仍出根式', inst.qLines[1], 'x1 = √2 ≈ 1.41421356237')
+eq('quad 页分数系数（parseCoeff 路径）仍出根式', inst.qLines[1], 'x1 = −√2 ≈ −1.41421356237')
 inst.qa = '162'; inst.qb = '-3'; inst.qc = '2'; inst.quadSolve()
 eq('quad 页复数虚部根式 x1', inst.qLines[2], 'x1 = 1/108 + √143/108i')
 eq('quad 页复数虚部根式 x2', inst.qLines[3], 'x2 = 1/108 − √143/108i')
 inst.qa = '1'; inst.qb = '0'; inst.qc = '1'; inst.quadSolve()
 eq('quad 页虚部有理仍走既有 cplxStr 行', inst.qLines[2], 'x1 = 0 + 1i')
 inst.qa = '1'; inst.qb = '-3'; inst.qc = '2'; inst.quadSolve()
-eq('quad 页有理根既有双显不回退', inst.qLines[1], 'x1 = 2')
-eq('quad 页有理根 x2', inst.qLines[2], 'x2 = 1')
+eq('quad 页有理根既有双显不回退', inst.qLines[1], 'x1 = 1')
+eq('quad 页有理根 x2', inst.qLines[2], 'x2 = 2')
 
 // eqin 二次路径：根式行端到端
 inst = makeInst()
 inst.eqExpr = 'x²=2'; inst.eqChars1 = inst.eqExpr.split(''); inst.eqSolve()
-ok('eqin x²=2 给根式 x1 行', inst.eqLines.join('|').indexOf('x1 = √2 ≈ 1.41421356237') >= 0)
-ok('eqin x²=2 给根式 x2 行', inst.eqLines.join('|').indexOf('x2 = −√2 ≈ −1.41421356237') >= 0)
+ok('eqin x²=2 给根式 x1 行', inst.eqLines.join('|').indexOf('x1 = −√2 ≈ −1.41421356237') >= 0)
+ok('eqin x²=2 给根式 x2 行', inst.eqLines.join('|').indexOf('x2 = √2 ≈ 1.41421356237') >= 0)
 inst.eqExpr = '2x²-3x-1=0'; inst.eqChars1 = inst.eqExpr.split(''); inst.eqSolve()
-ok('eqin 2x²−3x−1=0 给 (3+√17)/4 行', inst.eqLines.join('|').indexOf('x1 = (3+√17)/4 ≈ 1.780776406') >= 0)
+ok('eqin 2x²−3x−1=0 给 (3+√17)/4 行', inst.eqLines.join('|').indexOf('x1 = (3−√17)/4 ≈ −0.28077641') >= 0)
 
 // 图象页：交点行端到端
 inst = makeInst()
 inst.unlocked = true
 inst.qa = '1'; inst.qb = '0'; inst.qc = '-2'; inst.openPlot('quad')
-ok('图象页交点行带根式', inst.plotLines.join('|').indexOf('与 x 轴交点 x = √2 ≈ 1.41、−√2') >= 0)
+ok('图象页交点行带根式', inst.plotLines.join('|').indexOf('与 x 轴交点 x = −√2、√2 ≈ 1.41') >= 0) // 【1.6.0 自查 F1 修订】交点行按 x1<x2 升序（旧期望 √2 ≈ 1.41、−√2 为大根在前）
 
 // ---------- B 主界面分数口径（实例）：只看结果值、不看输入形式 ----------
 function feedCalc(expr) {

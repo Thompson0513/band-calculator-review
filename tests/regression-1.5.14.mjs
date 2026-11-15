@@ -72,12 +72,14 @@ function loadPage(storageImpl) {
   globalThis.__storage = storageImpl
   globalThis.__vibrator = { vibrate() {} }
   globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210' }) } }
+  globalThis.__router = { push() {}, back() {} }
   globalThis.__calc = calc
   globalThis.__paykey = paykeyMod
   script = script
     .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
     .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
     .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
     .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
     .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
     .replace('export default', 'module.exports =')
@@ -226,17 +228,17 @@ eq('I5 科学计数接力串 +2 仍记', histDelta('3.69844555555e+34+2'), 1)
 // ---------- J. 溢出显示状态 ----------
 {
   const i = feedCalc('0^-1')
-  ok('J1 0^-1 显示溢出且 previewOk=false', i.resDisp === '溢出' && i.previewOk === false)
+  ok('J1 0^-1 显示「不能 ÷ 0」且 previewOk=false（1.6.0 自查 B10 修订：0^-1 抛 div0，页面用 hints 文案「不能 ÷ 0」）', i.resDisp === '不能 ÷ 0' && i.previewOk === false)
   i.pressKey('eq')
   eq('J2 溢出按 = 不污染 lastAns', i.lastAns, '')
 }
 {
   const i = feedCalc('1e308×10')
-  ok('J3 1e308×10 同样错误状态', i.resDisp === '溢出' && i.previewOk === false)
+  ok('J3 1e308×10 同样错误状态（1.6.0 自查 B10 复核：引擎溢出返回 Infinity、页面显示「溢出」为既定口径，见 L1 与 1.5.18 7d/7e；只修 0^-1 的 div0）', i.resDisp === '溢出' && i.previewOk === false)
 }
 {
   const i = feedCalc('10^400')
-  ok('J4 10^400 同样错误状态', i.resDisp === '溢出' && i.previewOk === false)
+  ok('J4 10^400 同样错误状态（1.6.0 自查 B10 复核：同 J3）', i.resDisp === '溢出' && i.previewOk === false)
 }
 {
   const i = feedCalc('2+3')

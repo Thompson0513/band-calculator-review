@@ -1,3 +1,4 @@
+// 二次方程两根恒按 x1<x2 升序；C/D/E 组小根/大根下标随之互换，根值本身不变。
 // 回归测试 1.5.6：ChatGPT《1.5.5 上架前深度审核报告》逐项实跑核实后的修复
 // A.方程组容差下限误判：solveSystem 的 eD/eX/eY 旧用 max(1, …) 兜底，
 // 系数整体在 1e-7 级时真行列式（1e-14 级）被 1e-12 绝对阈值吞掉，唯一解误报无穷多解。
@@ -59,12 +60,14 @@ const memStore = {}
 globalThis.__storage = { get(o) { o.success(memStore[o.key] || '')}, set(o) { memStore[o.key] = o.value}}
 globalThis.__vibrator = { vibrate() {}}
 globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210'})}}
+  globalThis.__router = { push() {}, back() {} }
 globalThis.__calc = calc
 globalThis.__paykey = paykeyMod
 script = script
 .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
 .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
 .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
 .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
 .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
 .replace('export default', 'module.exports =')
@@ -130,8 +133,8 @@ eq('C −2.5e-16 是真值', calc.formatDisplay(-2.5e-16), '−2.5×10⁻¹⁶')
 eq('C cleanNum 放行 1e-16', calc.cleanNum(1e-16), 1e-16)
 {
 const r = calc.solveQuad(1, 1e16, 1)
-eq('C 二次方程小根不再吞成 0', calc.formatDisplay(r.x1), '−1×10⁻¹⁶') // 1.5.17 修订：课本式
-eq('C 二次方程小根 ansStr', F154.ansStr('x1', r.x1, 28), 'x1 = −1×10⁻¹⁶') // 1.5.17 修订：课本式
+eq('C 二次方程小根不再吞成 0（1.6.0 自查 B4 修订：小根现为 x2）', calc.formatDisplay(r.x2), '−1×10⁻¹⁶') // 1.5.17 修订：课本式
+eq('C 二次方程小根 ansStr（1.6.0 自查 B4 修订：小根现为 x2）', F154.ansStr('x2', r.x2, 28), 'x2 = −1×10⁻¹⁶') // 1.5.17 修订：课本式
 }
 {
 const r = calc.solveSystem(1e16, 0, 1, 0, 1, 1)
@@ -146,30 +149,56 @@ eq('C 1e-14 乘积不变', calc.formatDisplay(calc.evaluate('0.0000001×0.000000
 eq('C 1e-13 不变', calc.formatDisplay(1e-13), '1×10⁻¹³') // 1.5.17 修订：课本式
 
 // ---------- D. 二次方程溢出（修复正例 + 正常大数守卫） ----------
+// 【1.5.20 修订披露】本组前四条与下方页面级两条的旧期望（判别式溢出报错）
+// 被第十四轮复审 N-05 定版推翻：旧版先算原始判别式、溢出即报错，1.5.7 的
+// 尺度归一化根本没机会执行；1.5.20 改为先归一化再判别，归一化后根/虚部
+// 仍非有限才报错。四条的方程在归一化后都有可表示的根/复根，故按新口径
+// 改钉结果（逐条见下）；真溢出的三条（a 极小/复数虚部/线性退化）仍报错、
+// 未动。1.5.7 A3 的两条同族钉注亦同步修订（见该文件）。
 const ERR = '数字太大，超出精确计算范围'
-eq('D b=1e308 判别式溢出报错', calc.solveQuad(1, 1e308, 1).error, ERR)
-eq('D b=1e200 判别式溢出报错', calc.solveQuad(1, 1e200, 1).error, ERR)
-eq('D 判别式 NaN 报错', calc.solveQuad(1e200, 1e200, 1e200).error, ERR)
-eq('D 判别式 −Infinity 报错', calc.solveQuad(1e308, 1, 1).error, ERR)
+{
+const r = calc.solveQuad(1, 1e308, 1)
+eq('D【1.5.20 修订】b=1e308 归一化后判两根（旧期望：判别式溢出报错）', r.type, 'two')
+approx('D【1.5.20 修订】b=1e308 小根量级', Math.abs(r.x2), 1e-308, 1e-314)
+approx('D【1.5.20 修订】b=1e308 大根量级', Math.abs(r.x1), 1e308, 1e302)
+}
+{
+const r = calc.solveQuad(1, 1e200, 1)
+eq('D【1.5.20 修订】b=1e200 归一化后判两根（旧期望：判别式溢出报错）', r.type, 'two')
+approx('D【1.5.20 修订】b=1e200 小根量级', Math.abs(r.x2), 1e-200, 1e-206)
+approx('D【1.5.20 修订】b=1e200 大根量级', Math.abs(r.x1), 1e200, 1e194)
+}
+{
+const r = calc.solveQuad(1e200, 1e200, 1e200)
+eq('D【1.5.20 修订】等系数 1e200 归一化后判复数根（旧期望：判别式 NaN 报错）', r.type, 'complex')
+approx('D【1.5.20 修订】等系数复根实部', r.re, -0.5)
+approx('D【1.5.20 修订】等系数复根虚部', r.im, Math.sqrt(3) / 2)
+}
+{
+const r = calc.solveQuad(1e308, 1, 1)
+eq('D【1.5.20 修订】a=1e308 归一化后判复数根（旧期望：判别式 −Infinity 报错）', r.type, 'complex')
+approx('D【1.5.20 修订】a=1e308 复根虚部', r.im, 1e-154, 1e-160)
+ok('D【1.5.20 修订】a=1e308 复根实部有限', isFinite(r.re))
+}
 eq('D a 极小稳定求根溢出报错', calc.solveQuad(1e-300, 1e154, 1).error, ERR)
 eq('D 复数虚部溢出报错', calc.solveQuad(1e-320, 0, 1e308).error, ERR)
 eq('D 线性退化根溢出报错', calc.solveQuad(0, 1e-320, 1e308).error, ERR)
 {
 const r = calc.solveQuad(1, 1e154, 1)
 eq('D 守卫 b=1e154 合法大根 type', r.type, 'two')
-approx('D 守卫 小根量级', Math.abs(r.x1), 1e-154, 1e-160)
-approx('D 守卫 大根量级', Math.abs(r.x2), 1e154, 1e148)
+approx('D 守卫 小根量级', Math.abs(r.x2), 1e-154, 1e-160)
+approx('D 守卫 大根量级', Math.abs(r.x1), 1e154, 1e148)
 ok('D 守卫 两根有限', isFinite(r.x1) && isFinite(r.x2))
 }
 {
 const r = calc.solveQuad(2, -3, 1)
-eq('D 守卫 普通方程 type', r.type, 'two'); approx('D 守卫 普通根1', r.x1, 1); approx('D 守卫 普通根2', r.x2, 0.5)
+eq('D 守卫 普通方程 type', r.type, 'two'); approx('D 守卫 普通根1', r.x1, 0.5); approx('D 守卫 普通根2', r.x2, 1)
 }
 {
 const inst = makeInst()
 inst.qa = '1'; inst.qb = '1' + '0'.repeat(200); inst.qc = '1'; inst.quadSolve()
-eq('D 二次方程页显示报错行', JSON.stringify(inst.qLines), JSON.stringify([ERR]))
-eq('D 报错时不可看图象', inst.qCanPlot, false)
+eq('D【1.5.20 修订】二次方程页 b=1e200 显示两根（旧期望：显示报错行）', JSON.stringify(inst.qLines), JSON.stringify(['判别式 Δ = 1 > 0', 'x1 = −1×10²⁰⁰', 'x2 = −1×10⁻²⁰⁰']))
+eq('D【1.5.20 修订】b=1e200 有根时可看图象（旧期望：不可看图象）', inst.qCanPlot, true)
 }
 
 // ---------- E. 根式精确性（核实记录，不属实） ----------
@@ -180,17 +209,17 @@ eq('E √2 浮点近似系数 toFraction 为 null', calc.toFraction(a), null)
 eq('E √2 浮点近似系数 quadRadStrs 回退 null', F154.quadRadStrs(a, 0, -2, r.x1, r.x2), null)
 const inst = makeInst()
 inst.qa = '1.41421356237'; inst.qb = '0'; inst.qc = '-2'; inst.quadSolve()
-eq('E quad 页回退纯小数 x1', inst.qLines[1], 'x1 ≈ 1.189207115')
+eq('E quad 页回退纯小数 x1', inst.qLines[1], 'x1 ≈ −1.189207115')
 ok('E quad 页无根式冒充', inst.qLines.join('').indexOf('√') < 0 || inst.qLines[0].indexOf('Δ') >= 0 && inst.qLines[1].indexOf('√') < 0 && inst.qLines[2].indexOf('√') < 0)
 }
 {
 const inst = makeInst()
 inst.qa = '0.3333333333'; inst.qb = '0'; inst.qc = '-3'; inst.quadSolve()
 eq('E 0.3333333333 被认作 1/3（既定容差口径）', JSON.stringify(calc.toFraction(0.3333333333)), JSON.stringify({ n: 1, d: 3}))
-eq('E Δ 完全平方走有理路径 x1 显示浮点根原值', inst.qLines[1], 'x1 = 3.00000000015')
-eq('E Δ 完全平方走有理路径 x2 显示浮点根原值', inst.qLines[2], 'x2 = −3.00000000015')
+eq('E Δ 完全平方走有理路径 x1 显示浮点根原值', inst.qLines[1], 'x1 = −3.00000000015')
+eq('E Δ 完全平方走有理路径 x2 显示浮点根原值', inst.qLines[2], 'x2 = 3.00000000015')
 const r = calc.solveQuad(0.3333333333, 0, -2)
-eq('E 口径记录 c=−2 时给 √6（自检容差内）', JSON.stringify(F154.quadRadStrs(0.3333333333, 0, -2, r.x1, r.x2)), JSON.stringify({ x1: '√6', x2: '−√6', exact: false }))
+eq('E 口径记录 c=−2 时给 √6（自检容差内）', JSON.stringify(F154.quadRadStrs(0.3333333333, 0, -2, r.x1, r.x2)), JSON.stringify({ x1: '−√6', x2: '√6', exact: false }))
 }
 
 // ---------- F. 分数钮边界（核实记录，不属实） ----------

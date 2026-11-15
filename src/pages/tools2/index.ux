@@ -1,0 +1,810 @@
+<template>
+  <div class="page">
+    <!-- ===== 新工具菜单（第二页） ===== -->
+    <div class="view" if="{{view === 'menu'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackMain"><text class="bar-btn">‹ 返回</text></div>
+        <text class="bar-title">更多工具</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <list class="tool-list">
+        <list-item type="trow" class="tool-row" for="{{tools2Menu}}" onclick="openTool2($item.id)">
+          <text class="tool-ico">{{$item.ico}}</text>
+          <div class="tool-main">
+            <text class="tool-name">{{$item.name}}</text>
+            <text class="tool-desc">{{$item.desc}}</text>
+          </div>
+          <text class="tool-arrow">›</text>
+        </list-item>
+      </list>
+      <text class="foot-tip">初中 · 高中的进阶工具</text>
+    </div>
+
+    <!-- ===== 未解锁提示 ===== -->
+    <div class="view" if="{{view === 'locked'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackMain"><text class="bar-btn">‹ 返回</text></div>
+        <text class="bar-title">还没解锁</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <div class="q-res">
+        <text class="q-line">这几个工具要先解锁计算器</text>
+        <text class="q-line">回计算器主页，点工具箱按提示解锁</text>
+      </div>
+    </div>
+
+    <!-- ===== 解直角三角形 ===== -->
+    <div class="view" if="{{view === 'rtri'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">解直角三角形</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <text class="q-formula">角 C 是直角，填任意两个量</text>
+      <div class="q-fields">
+        <div class="q-field {{rtField === $item.key ? 'q-field-on' : ''}}" for="{{rtFieldDefs1}}" onclick="setRtField($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{rtFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-fields">
+        <div class="q-field {{rtField === $item.key ? 'q-field-on' : ''}}" for="{{rtFieldDefs2}}" onclick="setRtField($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{rtFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-res">
+        <text class="q-line" for="{{rtLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="rtPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 正弦 · 余弦定理 ===== -->
+    <div class="view" if="{{view === 'law'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">正余弦定理</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <text class="q-formula">填任意三个量，至少一条边</text>
+      <div class="q-fields">
+        <div class="q-field {{lwField === $item.key ? 'q-field-on' : ''}}" for="{{lwFieldDefs1}}" onclick="setLwField($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{lwFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-fields">
+        <div class="q-field {{lwField === $item.key ? 'q-field-on' : ''}}" for="{{lwFieldDefs2}}" onclick="setLwField($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{lwFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-res q-res-l">
+        <text class="q-line q-line-s" for="{{lwLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm key-xs key-c5" for="{{quadKeys}}" onclick="lwPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 排列组合 ===== -->
+    <div class="view" if="{{view === 'perm'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">排列组合</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <text class="q-formula">n 个元素里取 r 个</text>
+      <div class="q-fields">
+        <div class="q-field q-field-w {{pmField === $item.key ? 'q-field-on' : ''}}" for="{{pmFieldDefs}}" onclick="setPmField($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{pmFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-res">
+        <text class="q-line" for="{{pmLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="pmPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 等差 · 等比数列 ===== -->
+    <div class="view" if="{{view === 'seq'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">等差等比数列</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <div class="chip-row">
+        <div class="chip {{sqKind === $item.id ? 'chip-on' : ''}}" for="{{seqKindChips}}" onclick="setSqKind($item.id)">
+          <text class="chip-t {{sqKind === $item.id ? 'chip-t-on' : ''}}">{{$item.name}}</text>
+        </div>
+      </div>
+      <div class="q-fields">
+        <div class="q-field {{sqField === $item.key ? 'q-field-on' : ''}}" for="{{sqFieldDefs}}" onclick="setSqField($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{sqFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-res">
+        <text class="q-line" for="{{sqLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="sqPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</template>
+
+<script>
+import storage from '@system.storage'
+import vibrator from '@system.vibrator'
+import device from '@system.device'
+import router from '@system.router'
+import calc from '../../common/calc'
+import calc2 from '../../common/calc2'
+import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'
+
+function coeffSrc(s) {
+  let t = String(s).replace(/−/g, '-')
+  t = t.replace(/√(?!\()/g, '√(')
+  t = t.replace(/([0-9.)πe])(?=[√πe(])/g, '$1*')
+  t = t.replace(/([πe)])(?=[0-9])/g, '$1*')
+  let open = 0
+  for (const ch of t) { if (ch === '(') open++; else if (ch === ')') open-- }
+  while (open > 0) { t += ')'; open-- }
+  return t
+}
+function parseCoeff(s) {
+  if (s === '' || s === '-') return NaN
+  // 2026-11-15 自查 F11：整串就是科学计数法时按科学计数法读（1e21 → 10²¹），
+  // 与主键盘 evaluate 的分词口径一致。'2e'（2×e）、'e2'（e×2）仍走欧拉
+  // 读法（regression-1.6.0 §1d 钉死）；带运算符的长式子也不动。
+  if (/^-?(\d+(\.\d*)?|\.\d+)e[+-]?\d+$/i.test(s)) return parseFloat(s)
+  if (/^-?(\d+(\.\d*)?|\.\d+)(\/\d+(\.\d*)?|\/\.\d+)?$/.test(s)) {
+    if (s.indexOf('/') >= 0) {
+      const p = s.split('/')
+      if (p.length !== 2) return NaN
+      const n = parseFloat(p[0]), d = parseFloat(p[1])
+      if (isNaN(n) || isNaN(d) || d === 0) return NaN
+      return n / d
+    }
+    return parseFloat(s)
+  }
+  try {
+    const v = calc.evaluate(coeffSrc(s))
+    return isFinite(v) ? v : NaN
+  } catch (e) { return NaN }
+}
+function parseCoeff0(s) { return s === '' ? 0 : parseCoeff(s) }
+
+function parseOpt(s) { return s === '' ? null : parseCoeff(s) }
+function editCoeff(cur, v) {
+  if (v === 'C') return ''
+  if (v === 'back') return cur.slice(0, -1)
+  // 2026-11-15 自查 C4：± 只在“加号”时受 20 字上限拦，解负号（变短）不拦。
+  if (v === 'neg') {
+    if (cur.indexOf('-') === 0) return cur.slice(1)
+    if (cur.length >= 20) return cur
+    return '-' + cur
+  }
+  if (v === 'ok' || v === 'ok2') return 'NEXT'
+  const last = cur.slice(-1)
+  if (v === 'sqrt') return cur.length >= 19 ? cur : cur + '√('
+  if (v === 'pi') return cur.length >= 20 ? cur : cur + 'π'
+  if (v === 'e') return cur.length >= 20 ? cur : cur + 'e'
+  if (v === ')') return cur.length >= 20 ? cur : cur + ')'
+  if (v === '/') {
+    if (cur === '' || cur === '-' || last === '/' || last === '(') return cur
+    if (cur.indexOf('(') < 0 && cur.indexOf('/') >= 0) return cur
+    // 2026-11-15 自查 C4：'/' 也按追加后总长查 20 字上限。
+    if (cur.length >= 20) return cur
+    return cur + '/'
+  }
+  if (v === '.') {
+    if (last === ')' || last === 'π' || last === 'e') return cur
+    // 2026-11-15 自查 C4：'.' 也按追加后总长查 20 字上限。
+    if (cur.length >= 20) return cur
+    if (cur.indexOf('(') < 0 && (cur.indexOf('.') >= 0 || cur.indexOf('/') >= 0)) return cur
+    let seg = ''
+    for (let i = cur.length - 1; i >= 0; i--) {
+      const ch = cur[i]
+      if ((ch >= '0' && ch <= '9') || ch === '.') seg = ch + seg
+      else break
+    }
+    if (seg.indexOf('.') >= 0) return cur
+    if (cur === '' || cur === '-' || last === '/' || last === '(') return cur + '0.'
+    return cur + '.'
+  }
+  if (cur === '0') return v === '0' ? cur : v
+  if (cur === '-0') return v === '0' ? cur : '-' + v
+  let seg = ''
+  for (let i = cur.length - 1; i >= 0; i--) {
+    const ch = cur[i]
+    if ((ch >= '0' && ch <= '9') || ch === '.') seg = ch + seg
+    else break
+  }
+  if (seg === '0' && v !== '0') return cur.slice(0, -1) + v
+  // 2026-11-15 自查 C4：按追加后总长查上限（'00' 一次进两位也拦得住）。
+  if (cur.length + v.length > 20) return cur
+  return cur + v
+}
+
+function gcd2(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { const t = a % b; a = b; b = t } return a }
+function FD(x) { return calc.formatDisplay(x) }
+// 三角工具专用显示（1.6.0）：角度按学校口径保留两位小数去尾零；边长精确形
+// （整数 / 分数 / 根式）优先并带小数兜底，与全应用双显口径一致。
+function fmtDeg(v) {
+  let s = (Math.round(v * 100) / 100).toFixed(2)
+  if (s.indexOf('.') >= 0) s = s.replace(/0+$/, '').replace(/\.$/, '')
+  return s
+}
+function angSeg(v) {
+  const s = fmtDeg(v)
+  return (Math.abs(v - parseFloat(s)) < 1e-9 ? '= ' : '≈ ') + s + '°'
+}
+function fmtSide(v) {
+  const f = calc.toFraction(v)
+  if (f) {
+    const s = f.d === 1 ? intTxt(f.n) : intTxt(f.n) + '/' + f.d
+    // 整数不再缀小数（FD 的千分位写法会让同一数变成两种样子）
+    // 2026-11-15 自查 F5：分数与小数之间的连接号按是否精确选 = / ≈，
+    // 不再硬编码 ≈（1/512、1023/512、5/2 这类精确分数应为 =）。
+    return { t: f.d === 1 ? s : s + (calc.fracIsExact(v, f) ? ' = ' : ' ≈ ') + FD(f.n / f.d), exact: true }
+  }
+  const f2 = calc.toFraction(v * v)
+  if (f2 && f2.n > 0) {
+    const sq = calc.simplifySqrt(f2.n * f2.d)
+    if (!sq.error && sq.rad !== 1) {
+      let cn = sq.coef, cd = f2.d
+      const g = gcd2(cn, cd) || 1
+      cn /= g; cd /= g
+      const s = (cn === 1 ? '' : cn) + '√' + sq.rad + (cd === 1 ? '' : '/' + cd)
+      if (s.length <= 14) return { t: s + ' ≈ ' + FD(v), exact: true }
+    }
+  }
+  return { t: FD(v), exact: false }
+}
+function fmtVal(v) {
+  const f = calc.toFraction(v)
+  if (f) {
+    const s = f.d === 1 ? intTxt(f.n) : intTxt(f.n) + '/' + f.d
+    // 2026-11-15 自查 F5：同 fmtSide，精确分数用 =（见上）。
+    return f.d === 1 ? s : s + (calc.fracIsExact(v, f) ? ' = ' : ' ≈ ') + FD(f.n / f.d)
+  }
+  return FD(v)
+}
+// 2026-11-15 自查 F6：整数 < 1e21 保持无逗号原样；≥1e21 时 JS 的 String 会
+// 漏出原始 e 记法（如 1.7179250691067045e+47），改走 12 位课本式 ×10 上标。
+function intTxt(n) { return Math.abs(n) < 1e21 ? String(n) : FD(parseFloat(n.toPrecision(12))) }
+
+function fvPxOf(vals, tight) {
+  let m = 0
+  for (const v of vals) m = Math.max(m, String(v === null || v === undefined ? '' : v).length)
+  if (tight) return m <= 5 ? 20 : (m <= 7 ? 16 : 12)
+  return m <= 6 ? 20 : (m <= 8 ? 17 : 15)
+}
+
+const QUAD_KEYS = [
+  { v: '7', label: '7' }, { v: '8', label: '8' }, { v: '9', label: '9' }, { v: 'back', label: '←' }, { v: 'C', label: 'C' },
+  { v: '4', label: '4' }, { v: '5', label: '5' }, { v: '6', label: '6' }, { v: 'sqrt', label: '√' }, { v: 'pi', label: 'π' },
+  { v: '1', label: '1' }, { v: '2', label: '2' }, { v: '3', label: '3' }, { v: 'e', label: 'e' }, { v: ')', label: ')' },
+  { v: '0', label: '0' }, { v: '.', label: '.' }, { v: '/', label: '/' }, { v: 'neg', label: '±' }, { v: 'ok', label: '»' }
+]
+
+export default {
+  data: {
+    view: 'menu',
+    tool: '',
+    unlocked: false,
+    deviceId: '',
+    quadKeys: QUAD_KEYS,
+    tools2Menu: [
+      { id: 'rtri', ico: '90°', name: '解直角三角形', desc: '角 C 是直角，填任意两个量' },
+      { id: 'law', ico: '弦', name: '正弦 · 余弦定理', desc: '任意三角形，填任意三个量' },
+      { id: 'perm', ico: '排', name: '排列组合', desc: 'A(n,r) 与 C(n,r)，整数精确算' },
+      { id: 'seq', ico: '列', name: '等差 · 等比数列', desc: '填首项与公差 / 公比，求项与和' }
+    ],
+    rta: '3', rtb: '4', rtc: '', rtA: '', rtB: '',
+    rtField: 'a',
+    rtLines: [],
+    rtFvPx: 20,
+    lwa: '3', lwb: '4', lwc: '5', lwA: '', lwB: '', lwC: '',
+    lwField: 'a',
+    lwLines: [],
+    lwFvPx: 20,
+    pmn: '5', pmr: '2',
+    pmField: 'n',
+    pmLines: [],
+    pmFvPx: 20,
+    sqa: '1', sqx: '2', sqn: '10',
+    sqKind: 'ap',
+    sqField: 'a1',
+    sqLines: [],
+    sqFvPx: 20,
+    seqKindChips: [
+      { id: 'ap', name: '等差' },
+      { id: 'gp', name: '等比' }
+    ],
+    rtFieldDefs1: [
+      { key: 'a', label: 'a', val: '3' }, { key: 'b', label: 'b', val: '4' }, { key: 'c', label: 'c', val: '' }
+    ],
+    rtFieldDefs2: [
+      { key: 'A', label: 'A', val: '' }, { key: 'B', label: 'B', val: '' }, { key: 'C90', label: 'C', val: '90°' }
+    ],
+    lwFieldDefs1: [
+      { key: 'a', label: 'a', val: '3' }, { key: 'b', label: 'b', val: '4' }, { key: 'c', label: 'c', val: '5' }
+    ],
+    lwFieldDefs2: [
+      { key: 'A', label: 'A', val: '' }, { key: 'B', label: 'B', val: '' }, { key: 'C', label: 'C', val: '' }
+    ],
+    pmFieldDefs: [
+      { key: 'n', label: 'n', val: '5' }, { key: 'r', label: 'r', val: '2' }
+    ],
+    sqFieldDefs: [
+      { key: 'a1', label: 'a1', val: '1' }, { key: 'x', label: 'd', val: '2' }, { key: 'n', label: 'n', val: '10' }
+    ]
+  },
+  onInit() {
+    // 目标工具优先走路由参数：参数在页面创建时同步注入，首帧即直达，
+    // 不闪本页菜单（2026-11-15 真机反馈修复）。下面的存储读是参数缺失时的兜底。
+    if (this.tool === 'rtri' || this.tool === 'law' || this.tool === 'perm' || this.tool === 'seq') this.view = this.tool
+    this.fetchDeviceId()
+    const self = this
+    try {
+      storage.get({
+        key: 'calc_tool_nav',
+        success: function (data) {
+          if (data === 'rtri' || data === 'law' || data === 'perm' || data === 'seq') self.view = data
+          try { storage.set({ key: 'calc_tool_nav', value: '' }) } catch (e) {}
+        },
+        fail: function () {}
+      })
+    } catch (e) {}
+    this.rtSolve()
+    this.lwSolve()
+    this.pmSolve()
+    this.sqSolve()
+  },
+  onBackPress() {
+    if (this.view === 'menu' || this.view === 'locked') return false
+    this.goBackTools()
+    return true
+  },
+  buzz() {
+    try { vibrator.vibrate({ mode: 'short' }) } catch (e) {}
+  },
+  goMenu() { this.buzz(); this.view = 'menu' },
+  goBackMain() { this.buzz(); router.replace({ uri: '/pages/index' }) },
+  goBackTools() {
+    this.buzz()
+    try { storage.set({ key: 'calc_back_to', value: 'tools' }) } catch (e) {}
+    // 回程目标走路由参数同步传（首帧直达工具箱、不闪计算器主页）；存储键保留作兜底。
+    router.replace({ uri: '/pages/index', params: { backto: 'tools' } })
+  },
+  openTool2(id) {
+    this.buzz()
+    if (!this.unlocked) { this.view = 'locked'; return }
+    this.view = id
+  },
+  fetchDeviceId() {
+    const self = this
+    const fallback = function () {
+      try {
+        storage.get({
+          key: 'calc_devcode',
+          success: function (data) {
+            if (data && normalizeDeviceId(data).length === 32) {
+              self.deviceId = normalizeDeviceId(data)
+              self.checkStoredKey()
+            } else {
+              let c = ''
+              const hex = '0123456789abcdef'
+              for (let i = 0; i < 32; i++) c += hex[Math.floor(Math.random() * 16)]
+              self.deviceId = c
+              try { storage.set({ key: 'calc_devcode', value: c }) } catch (e) {}
+              self.checkStoredKey()
+            }
+          },
+          fail: function () {}
+        })
+      } catch (e) {}
+    }
+    try {
+      device.getDeviceId({
+        success: function (res) {
+          const id = normalizeDeviceId(res && res.deviceId ? res.deviceId : '')
+          if (id.length === 32) {
+            self.deviceId = id
+            self.checkStoredKey()
+          } else fallback()
+        },
+        fail: function () { fallback() }
+      })
+    } catch (e) { fallback() }
+  },
+  checkStoredKey() {
+    const self = this
+    try {
+      storage.get({
+        key: 'calc_key',
+        success: function (data) {
+          if (data && self.deviceId && keyMatches(self.deviceId, data)) self.unlocked = true
+        },
+        fail: function () {}
+      })
+    } catch (e) {}
+  },
+  setRtField(f) { this.buzz(); if (f !== 'C90') this.rtField = f },
+  syncRtFields() {
+    this.rtFieldDefs1 = [
+      { key: 'a', label: 'a', val: this.rta }, { key: 'b', label: 'b', val: this.rtb }, { key: 'c', label: 'c', val: this.rtc }
+    ]
+    this.rtFieldDefs2 = [
+      { key: 'A', label: 'A', val: this.rtA }, { key: 'B', label: 'B', val: this.rtB }, { key: 'C90', label: 'C', val: '90°' }
+    ]
+  },
+  rtSolve() {
+    this.syncRtFields()
+    this.rtFvPx = fvPxOf([this.rta, this.rtb, this.rtc, this.rtA, this.rtB], true)
+    const raw = { a: this.rta, b: this.rtb, c: this.rtc, A: this.rtA, B: this.rtB }
+    const k = {}
+    for (const key of ['a', 'b', 'c', 'A', 'B']) {
+      const v = parseOpt(raw[key])
+      if (v !== null && isNaN(v)) { this.rtLines = ['有格子里的数不对']; return }
+      k[key] = v
+    }
+    const r = calc2.solveRightTri(k)
+    if (r.error) { this.rtLines = [r.error]; return }
+    const lines = []
+    for (const s of ['a', 'b', 'c']) {
+      if (k[s] === null) { const f = fmtSide(r[s]); lines.push(s + ' ' + (f.exact ? '= ' : '≈ ') + f.t) }
+    }
+    const ang = []
+    if (k.A === null) ang.push('A ' + angSeg(r.A))
+    if (k.B === null) ang.push('B ' + angSeg(r.B))
+    if (ang.length) lines.push(ang.join(' · '))
+    this.rtLines = lines.length ? lines : ['都对得上，没有要解的']
+  },
+  rtPad(v) {
+    this.buzz()
+    const props = { a: 'rta', b: 'rtb', c: 'rtc', A: 'rtA', B: 'rtB' }
+    const prop = props[this.rtField]
+    const r = editCoeff(this[prop], v)
+    if (r === 'NEXT') {
+      const order = ['a', 'b', 'c', 'A', 'B']
+      this.rtField = order[(order.indexOf(this.rtField) + 1) % 5]
+      return
+    }
+    this[prop] = r
+    this.rtSolve()
+  },
+
+  setLwField(f) { this.buzz(); this.lwField = f },
+  syncLwFields() {
+    this.lwFieldDefs1 = [
+      { key: 'a', label: 'a', val: this.lwa }, { key: 'b', label: 'b', val: this.lwb }, { key: 'c', label: 'c', val: this.lwc }
+    ]
+    this.lwFieldDefs2 = [
+      { key: 'A', label: 'A', val: this.lwA }, { key: 'B', label: 'B', val: this.lwB }, { key: 'C', label: 'C', val: this.lwC }
+    ]
+  },
+  lwSolve() {
+    this.syncLwFields()
+    this.lwFvPx = fvPxOf([this.lwa, this.lwb, this.lwc, this.lwA, this.lwB, this.lwC], true)
+    const raw = { a: this.lwa, b: this.lwb, c: this.lwc, A: this.lwA, B: this.lwB, C: this.lwC }
+    const k = {}
+    for (const key of ['a', 'b', 'c', 'A', 'B', 'C']) {
+      const v = parseOpt(raw[key])
+      if (v !== null && isNaN(v)) { this.lwLines = ['有格子里的数不对']; return }
+      k[key] = v
+    }
+    const r = calc2.solveTriangle(k)
+    if (r.error) { this.lwLines = [r.error]; return }
+    const lines = []
+    r.solutions.forEach((sol, idx) => {
+      const tag = r.solutions.length > 1 ? ('解' + '一二'[idx] + '：') : ''
+      let tagged = false
+      for (const s of ['a', 'b', 'c']) {
+        if (k[s] === null) { const f = fmtSide(sol[s]); lines.push((tagged ? '' : tag) + s + ' ' + (f.exact ? '= ' : '≈ ') + f.t); tagged = true }
+      }
+      const ang = []
+      for (const s of ['A', 'B', 'C']) if (k[s] === null) ang.push(s + ' ' + angSeg(sol[s]))
+      if (ang.length) { lines.push((tagged ? '' : tag) + ang.join(' · ')); tagged = true }
+      const fa = fmtSide(sol.area)
+      lines.push((tagged ? '' : tag) + '面积 ' + (fa.exact ? '= ' : '≈ ') + fa.t)
+    })
+    this.lwLines = lines
+  },
+  lwPad(v) {
+    this.buzz()
+    const props = { a: 'lwa', b: 'lwb', c: 'lwc', A: 'lwA', B: 'lwB', C: 'lwC' }
+    const prop = props[this.lwField]
+    const r = editCoeff(this[prop], v)
+    if (r === 'NEXT') {
+      const order = ['a', 'b', 'c', 'A', 'B', 'C']
+      this.lwField = order[(order.indexOf(this.lwField) + 1) % 6]
+      return
+    }
+    this[prop] = r
+    this.lwSolve()
+  },
+
+  setPmField(f) { this.buzz(); this.pmField = f },
+  syncPmFields() {
+    this.pmFieldDefs = [
+      { key: 'n', label: 'n', val: this.pmn }, { key: 'r', label: 'r', val: this.pmr }
+    ]
+  },
+  pmSolve() {
+    this.syncPmFields()
+    this.pmFvPx = fvPxOf([this.pmn, this.pmr], true)
+    const n = parseOpt(this.pmn), r = parseOpt(this.pmr)
+    if (n === null || r === null) { this.pmLines = ['把 n 和 r 填好就能算']; return }
+    if (isNaN(n) || isNaN(r)) { this.pmLines = ['有格子里的数不对']; return }
+    if (n > 999) { this.pmLines = ['n 太大了（最多 999）']; return }
+    const res = calc2.permComb(n, r)
+    if (res.error) { this.pmLines = [res.error]; return }
+    if (!isFinite(res.A) || !isFinite(res.C)) { this.pmLines = ['数字太大，超出精确计算范围']; return }
+    const fa = res.aExact && Math.abs(res.A) < 1e16 ? String(res.A) : FD(res.A)
+    const fc = res.cExact && Math.abs(res.C) < 1e16 ? String(res.C) : FD(res.C)
+    // 2026-11-15 自查 F9：行超 30 字会被 .q-line（312px）省略号截掉末尾数字，
+    // 改 10 位课本式 ×10 上标缩短（如 A(30,15) ≈ 2.028432049×10²⁰，28 字放得下）。
+    const sci10 = function (x) { return calc.sciStr(x.toPrecision(10)) }
+    const la = 'A(' + n + ',' + r + ') ' + (res.aExact ? '= ' : '≈ ') + fa
+    const lc = 'C(' + n + ',' + r + ') ' + (res.cExact ? '= ' : '≈ ') + fc
+    this.pmLines = [
+      la.length > 30 ? 'A(' + n + ',' + r + ') ' + (res.aExact ? '= ' : '≈ ') + sci10(res.A) : la,
+      lc.length > 30 ? 'C(' + n + ',' + r + ') ' + (res.cExact ? '= ' : '≈ ') + sci10(res.C) : lc
+    ]
+  },
+  pmPad(v) {
+    this.buzz()
+    const props = { n: 'pmn', r: 'pmr' }
+    const prop = props[this.pmField]
+    const r = editCoeff(this[prop], v)
+    if (r === 'NEXT') { this.pmField = this.pmField === 'n' ? 'r' : 'n'; return }
+    this[prop] = r
+    this.pmSolve()
+  },
+
+  setSqField(f) { this.buzz(); this.sqField = f },
+  setSqKind(id) { this.buzz(); this.sqKind = id; this.sqSolve() },
+  syncSqFields() {
+    this.sqFieldDefs = [
+      { key: 'a1', label: 'a1', val: this.sqa },
+      { key: 'x', label: this.sqKind === 'ap' ? 'd' : 'q', val: this.sqx },
+      { key: 'n', label: 'n', val: this.sqn }
+    ]
+  },
+  sqSolve() {
+    this.syncSqFields()
+    this.sqFvPx = fvPxOf([this.sqa, this.sqx, this.sqn], true)
+    const a1 = parseOpt(this.sqa), x = parseOpt(this.sqx), n = parseOpt(this.sqn)
+    if (a1 === null || x === null || n === null) { this.sqLines = ['把三格填好就能算']; return }
+    if (isNaN(a1) || isNaN(x) || isNaN(n)) { this.sqLines = ['有格子里的数不对']; return }
+    if (!Number.isInteger(n) || n < 1) { this.sqLines = ['项数 n 要是正整数']; return }
+    if (n > 9999) { this.sqLines = ['项数太大了（最多 9999）']; return }
+    const r = calc2.seqSolve(this.sqKind, a1, x, n)
+    if (r.error) { this.sqLines = [r.error]; return }
+    if (!isFinite(r.an) || !isFinite(r.Sn)) { this.sqLines = ['数字太大，超出精确计算范围']; return }
+    this.sqLines = ['第 ' + n + ' 项 = ' + fmtVal(r.an), '前 ' + n + ' 项和 = ' + fmtVal(r.Sn)]
+  },
+  sqPad(v) {
+    this.buzz()
+    const props = { a1: 'sqa', x: 'sqx', n: 'sqn' }
+    const prop = props[this.sqField]
+    const r = editCoeff(this[prop], v)
+    if (r === 'NEXT') {
+      const order = ['a1', 'x', 'n']
+      this.sqField = order[(order.indexOf(this.sqField) + 1) % 3]
+      return
+    }
+    this[prop] = r
+    this.sqSolve()
+  }
+}
+</script>
+
+<style>
+.page { width: 336px; height: 480px; background-color: #EDF0F4; flex-direction: column; }
+.view { width: 336px; height: 480px; flex-direction: column; }
+
+/* 顶栏 */
+.topbar { width: 336px; height: 46px; flex-direction: row; align-items: center; padding-left: 14px; padding-right: 10px; }
+.top-title { font-size: 21px; font-weight: bold; color: #232A33; flex-grow: 1; }
+.top-btn { height: 34px; border-radius: 17px; background-color: #FFFFFF; border: 1px solid #D8DEE7; padding-left: 12px; padding-right: 12px; margin-left: 8px; align-items: center; justify-content: center; }
+.top-btn-t { font-size: 15px; color: #5F7E99; }
+.bar { width: 336px; height: 52px; flex-direction: row; align-items: center; padding-left: 10px; padding-right: 10px; position: relative; }
+.bbtn { height: 44px; border-radius: 22px; background-color: #FFFFFF; border: 1px solid #D8DEE7; padding-left: 16px; padding-right: 16px; align-items: center; justify-content: center; }
+.bar-sp { flex-grow: 1; height: 1px; }
+.bbtn-ghost { height: 44px; padding-left: 16px; padding-right: 16px; align-items: center; justify-content: center; }
+.bar-btn { font-size: 17px; color: #5F7E99; }
+.bar-btn-del { color: #C05B4D; }
+.bar-title { position: absolute; left: 100px; top: 14px; width: 136px; font-size: 19px; font-weight: bold; color: #232A33; text-align: center; }
+
+/* 计算器显示区 */
+.disp { width: 336px; height: 126px; padding-left: 16px; padding-right: 16px; padding-top: 2px; flex-direction: column; position: relative; }
+.expr { position: absolute; left: 16px; top: 4px; width: 304px; height: 48px; color: #232A33; text-align: right; lines: 1; }
+.res-row { position: absolute; left: 16px; top: 54px; width: 304px; height: 72px; flex-direction: row; align-items: center; }
+.res { flex-grow: 1; text-align: right; font-weight: bold; lines: 1; }
+.frac-chip { height: 28px; border-radius: 14px; background-color: #E3E9F1; padding-left: 10px; padding-right: 10px; margin-left: 8px; align-items: center; justify-content: center; }
+.frac-chip-t { font-size: 14px; color: #5F7E99; }
+
+/* 键盘（1.2.3：按键等比缩小，空间让给显示区） */
+.pad { width: 336px; flex-direction: row; flex-wrap: wrap; justify-content: center; padding-left: 5px; padding-top: 2px; }
+.key { width: 56px; height: 52px; border-radius: 16px; margin: 3px; align-items: center; justify-content: center; background-color: #FFFFFF; border: 1px solid #D8DEE7; }
+.key-num { background-color: #FFFFFF; }
+.key-fn { background-color: #E9EEF4; }
+.key-fnr { background-color: #F9ECE8; }
+.key-op { background-color: #E3E9F1; }
+.key-eq { background-color: #7A93AC; border-color: #7A93AC; }
+.key-t { color: #232A33; font-weight: bold; }
+.key-t-num { color: #232A33; }
+.key-t-fn { color: #5A6B80; }
+.key-t-fnr { color: #C05B4D; }
+.key-t-op { color: #5F7E99; }
+.key-t-eq { color: #FFFFFF; }
+.pad-sm { padding-left: 6px; }
+.key-sm { width: 74px; height: 42px; border-radius: 14px; }
+.key-c5 { width: 58px; }
+.eqkey { width: 74px; height: 36px; border-radius: 12px; }
+.eqkey-c5 { width: 58px; }
+.eqkey-s { height: 28px; }
+.eqgo { background-color: #7A93AC; border-color: #7A93AC; }
+.eqgo-t { color: #FFFFFF; font-weight: bold; }
+.eq-card { margin-top: 10px; }
+.eq-card-s { height: 46px; margin-top: 4px; }
+.eq-card2 { height: 46px; margin-top: 6px; }
+.eq-on { border-color: #7A93AC; background-color: #F2F6FA; }
+.eq-ph { color: #9AA6B4; font-size: 19px; font-weight: normal; }
+.eqsup-k { }
+.eq-chars { flex-direction: row; align-items: flex-start; flex-grow: 1; height: 34px; }
+.eq-ch { font-size: 25px; font-weight: bold; color: #232A33; }
+.eq-sup { font-size: 16px; margin-top: 1px; }
+.eq-val { flex-grow: 1; height: 40px; font-size: 25px; font-weight: bold; color: #232A33; text-align: left; lines: 1; }
+.pad-base { padding-left: 6px; }
+.key-b { width: 48px; height: 42px; border-radius: 12px; }
+
+/* 工具箱 */
+.tool-list { width: 336px; height: 372px; padding-left: 12px; padding-right: 12px; padding-top: 6px; }
+.tool-list2 { width: 336px; flex-direction: column; padding-left: 12px; padding-right: 12px; padding-top: 6px; }
+.tool-row { width: 312px; height: 74px; border-radius: 16px; background-color: #FFFFFF; border: 1px solid #D8DEE7; flex-direction: row; align-items: center; padding-left: 14px; padding-right: 12px; margin-bottom: 10px; }
+.tool-ico { width: 46px; font-size: 20px; font-weight: bold; color: #5F7E99; text-align: center; }
+.tool-main { flex-direction: column; flex-grow: 1; padding-left: 6px; }
+.tool-name { font-size: 19px; font-weight: bold; color: #232A33; }
+.tool-desc { font-size: 13px; color: #7C8798; margin-top: 3px; }
+.tool-arrow { font-size: 22px; color: #B9C4D1; }
+.foot-tip { width: 336px; font-size: 13px; color: #9AA6B4; text-align: center; margin-top: 8px; }
+
+/* 通用 chips */
+.chip-row { width: 336px; flex-direction: row; flex-wrap: wrap; padding-left: 10px; padding-top: 2px; padding-bottom: 4px; }
+.chip { height: 32px; border-radius: 16px; background-color: #FFFFFF; border: 1px solid #D8DEE7; padding-left: 13px; padding-right: 13px; margin: 3px; align-items: center; justify-content: center; }
+.chip-on { background-color: #7A93AC; border-color: #7A93AC; }
+.chip-t { font-size: 15px; color: #5A6B80; }
+.chip-t-on { color: #FFFFFF; font-weight: bold; }
+
+/* 单位换算 */
+.u-card { width: 312px; margin-left: 12px; border-radius: 16px; background-color: #FFFFFF; border: 1px solid #D8DEE7; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 14px; height: 58px; margin-top: 2px; }
+.u-pick { height: 34px; border-radius: 17px; background-color: #E3E9F1; padding-left: 12px; padding-right: 12px; align-items: center; justify-content: center; }
+.u-pick-t { font-size: 16px; color: #5F7E99; }
+.u-val { flex-grow: 1; height: 40px; font-size: 27px; font-weight: bold; color: #232A33; text-align: right; lines: 1; }
+.u-val-res { color: #5F7E99; }
+.swap-row { width: 336px; height: 30px; flex-direction: row; align-items: center; justify-content: center; }
+.swap-btn2 { margin-left: 10px; }
+.swap-btn { height: 26px; border-radius: 13px; background-color: #FFFFFF; border: 1px solid #D8DEE7; padding-left: 14px; padding-right: 14px; align-items: center; justify-content: center; }
+.swap-t { font-size: 13px; color: #5A6B80; }
+
+/* 选单位 */
+.pick-list { width: 336px; height: 418px; }
+.pick-row { width: 312px; height: 56px; border-radius: 14px; background-color: #FFFFFF; border: 1px solid #D8DEE7; flex-direction: row; align-items: center; padding-left: 16px; padding-right: 14px; margin-left: 12px; margin-bottom: 8px; }
+.pick-t { font-size: 18px; color: #232A33; flex-grow: 1; }
+.pick-on { font-size: 13px; color: #5F7E99; }
+
+/* 进制转换 */
+.b-inwrap { width: 312px; margin-left: 12px; border-radius: 16px; background-color: #FFFFFF; border: 1px solid #D8DEE7; flex-direction: row; align-items: center; padding-left: 14px; padding-right: 14px; height: 46px; margin-top: 2px; }
+.b-label { font-size: 14px; color: #7C8798; }
+.b-in { flex-grow: 1; font-size: 23px; font-weight: bold; color: #232A33; text-align: right; lines: 1; text-overflow: ellipsis; }
+.b-err { width: 312px; margin-left: 12px; font-size: 13px; color: #C05B4D; margin-top: 4px; }
+.b-rows { width: 336px; flex-direction: column; padding-left: 12px; padding-right: 12px; margin-top: 4px; }
+.b-row { width: 312px; min-height: 35px; flex-direction: row; align-items: center; padding-top: 4px; padding-bottom: 4px; }
+.b-row-k { width: 58px; font-size: 14px; color: #7C8798; }
+.b-row-v { width: 242px; font-size: 17px; color: #232A33; padding-left: 6px; }
+
+/* 方程系数页（通用） */
+.q-formula-r { width: 336px; flex-direction: row; justify-content: center; align-items: flex-start; margin-top: 2px; }
+.q-formula-t { font-size: 17px; color: #7C8798; }
+.q-fl-d { font-size: 13px; font-weight: bold; color: #5F7E99; margin-right: 8px; margin-top: 6px; }
+.q-formula { width: 336px; font-size: 17px; color: #7C8798; text-align: center; margin-top: 2px; }
+.q-fields { width: 336px; flex-direction: row; padding-left: 12px; padding-right: 12px; margin-top: 6px; }
+.q-field { width: 98px; height: 50px; border-radius: 14px; background-color: #FFFFFF; border: 1px solid #D8DEE7; flex-direction: row; align-items: center; padding-left: 12px; margin-right: 9px; }
+.q-field-w { width: 150px; }
+.q-fields-abs { position: relative; height: 56px; padding-left: 0px; padding-right: 0px; }
+.qf-1 { position: absolute; left: 12px; top: 0px; margin-right: 0px; }
+.qf-2 { position: absolute; left: 119px; top: 0px; margin-right: 0px; }
+.qf-3 { position: absolute; left: 226px; top: 0px; margin-right: 0px; }
+.qf-w1 { position: absolute; left: 12px; top: 0px; margin-right: 0px; }
+.qf-w2 { position: absolute; left: 174px; top: 0px; margin-right: 0px; }
+.q-field-on { background-color: #DCE6EF; border-color: #7A93AC; }
+.q-fl { font-size: 19px; font-weight: bold; color: #5F7E99; margin-right: 8px; }
+.q-fv { font-size: 20px; font-weight: bold; color: #232A33; lines: 1; text-overflow: ellipsis; padding-left: 4px; }
+.q-res { width: 312px; margin-left: 12px; height: 106px; flex-direction: column; padding-top: 8px; }
+.q-res-s { height: 60px; }
+.q-res-l { height: 140px; }
+.q-fields-sys { height: 52px; }
+.key-sys { height: 34px; }
+.q-line { font-size: 19px; color: #232A33; margin-bottom: 3px; line-height: 22px; padding-left: 6px; lines: 1; text-overflow: ellipsis; }
+.q-line-s { font-size: 17px; line-height: 20px; margin-bottom: 2px; }
+.plot-btn-row { width: 336px; align-items: center; margin-top: 3px; margin-bottom: 3px; }
+.plot-btn { height: 30px; border-radius: 17px; background-color: #7A93AC; padding-left: 18px; padding-right: 18px; align-items: center; justify-content: center; }
+.plot-btn-t { font-size: 16px; color: #FFFFFF; font-weight: bold; }
+
+/* 分数计算（1.2.3：格子改绝对定位，杜绝切换高亮时重排重合） */
+.f-grid { width: 336px; flex-direction: row; justify-content: center; align-items: flex-start; margin-top: 4px; }
+.f-res { height: 86px; }
+.f-col { width: 96px; height: 104px; position: relative; }
+.f-cell { width: 96px; height: 46px; margin-right: 0px; padding-left: 0px; justify-content: center; position: absolute; left: 0px; }
+.f-cell-t { top: 0px; }
+.f-cell-b { top: 58px; }
+.f-fv { width: 96px; text-align: center; }
+.f-line { position: absolute; top: 51px; left: 0px; width: 96px; height: 2px; background-color: #B9C4D1; }
+.f-op { font-size: 30px; font-weight: bold; color: #5F7E99; margin-left: 16px; margin-right: 16px; margin-top: 37px; }
+.f-ops { justify-content: center; margin-top: 4px; }
+
+/* 根号化简 */
+.sqrt-card { margin-top: 12px; }
+.sqrt-sym { font-size: 27px; font-weight: bold; color: #5F7E99; margin-right: 6px; }
+.sqrt-res { height: 118px; margin-top: 10px; }
+
+/* 函数图象 */
+.plot-title { width: 336px; font-size: 17px; color: #232A33; text-align: center; margin-top: 0px; lines: 1; text-overflow: ellipsis; }
+.plot-box { width: 312px; height: 296px; margin-left: 12px; margin-top: 2px; background-color: #FFFFFF; border: 1px solid #D8DEE7; border-radius: 14px; position: relative; }
+.axis-y { position: absolute; width: 1px; height: 296px; background-color: #C3CEDA; top: 0px; }
+.axis-x { position: absolute; height: 1px; width: 312px; background-color: #C3CEDA; left: 0px; }
+.dot { position: absolute; width: 4px; height: 4px; border-radius: 2px; background-color: #5F7E99; }
+.dot-key { width: 8px; height: 8px; border-radius: 4px; background-color: #C05B4D; }
+.tick-x { position: absolute; width: 1px; height: 7px; background-color: #8FA3B8; }
+.tick-y { position: absolute; width: 7px; height: 1px; background-color: #8FA3B8; }
+.tick-lab { position: absolute; font-size: 10px; color: #7C8798; }
+.plot-res { height: 108px; }
+.key-xs { height: 36px; }
+.q-res-xs { height: 38px; }
+.range-lab { font-size: 15px; font-weight: bold; color: #232A33; margin-left: 3px; margin-right: 2px; align-self: center; }
+
+/* 历史（1.2.3：行高写死防重叠；式子两行完整显示；带时间） */
+.h-empty { width: 336px; font-size: 16px; color: #9AA6B4; text-align: center; margin-top: 60px; }
+.h-row2 { width: 312px; height: 66px; border-radius: 14px; background-color: #FFFFFF; border: 1px solid #D8DEE7; flex-direction: column; padding-left: 14px; padding-right: 14px; padding-top: 8px; margin-bottom: 8px; }
+.h-top { width: 284px; height: 22px; flex-direction: row; align-items: center; }
+.h-expr2 { flex-grow: 1; font-size: 15px; color: #5A6B80; lines: 1; text-overflow: ellipsis; padding-left: 6px; }
+.h-bot { width: 284px; height: 24px; flex-direction: row; align-items: center; }
+.h-res2 { width: 284px; font-size: 20px; font-weight: bold; color: #5F7E99; lines: 1; text-overflow: ellipsis; margin-top: 3px; padding-left: 6px; }
+.h-time { font-size: 12px; color: #7C8798; margin-left: 8px; }
+.h-pager { width: 336px; height: 34px; flex-direction: row; align-items: center; justify-content: center; }
+.h-pgbtn { height: 30px; border-radius: 15px; background-color: #FFFFFF; border: 1px solid #D8DEE7; padding-left: 14px; padding-right: 14px; align-items: center; justify-content: center; margin-left: 8px; margin-right: 8px; }
+.h-pgt { font-size: 14px; color: #5F7E99; }
+.h-pginfo { font-size: 13px; color: #7C8798; }
+
+/* 解锁 */
+.lock-row { width: 312px; height: 62px; border-radius: 16px; background-color: #FFFFFF; border: 1px solid #D8DEE7; flex-direction: row; align-items: center; padding-left: 14px; padding-right: 12px; margin-left: 12px; margin-top: 6px; margin-bottom: 2px; }
+.u-body { width: 336px; flex-direction: column; align-items: center; }
+.u-line { width: 336px; height: 24px; font-size: 16px; font-weight: bold; color: #232A33; text-align: center; margin-top: 2px; }
+.u-line2 { width: 336px; height: 18px; font-size: 12px; color: #5A6572; text-align: center; margin-top: 3px; }
+.un-card { width: 312px; border-radius: 14px; background-color: #FFFFFF; border: 1px solid #D8DEE7; flex-direction: column; align-items: center; padding-top: 6px; padding-bottom: 7px; margin-top: 5px; }
+.u-code-lab { width: 312px; height: 17px; font-size: 12px; color: #5A6572; text-align: center; }
+.u-code { width: 312px; height: 42px; font-size: 36px; font-weight: bold; color: #5F7E99; text-align: center; letter-spacing: 4px; margin-top: 2px; }
+.u-code-hint { width: 312px; height: 15px; font-size: 11px; color: #9AA6B4; text-align: center; margin-top: 1px; }
+.u-slots { width: 336px; height: 40px; flex-direction: row; justify-content: center; align-items: center; margin-top: 5px; }
+.u-slot { width: 24px; height: 36px; border-radius: 8px; background-color: #FFFFFF; border: 1px solid #D8DEE7; justify-content: center; align-items: center; }
+.u-slot-t { font-size: 22px; font-weight: bold; color: #232A33; text-align: center; }
+.u-msg { width: 336px; height: 18px; font-size: 12px; color: #C05B4D; text-align: center; margin-top: 0px; }
+.u-ok { width: 336px; font-size: 26px; font-weight: bold; color: #5F7E99; text-align: center; }
+.u-body-ok { height: 428px; justify-content: center; }
+.key-un { width: 74px; height: 35px; border-radius: 12px; }
+.u-btn { width: 200px; height: 34px; border-radius: 17px; }
+</style>

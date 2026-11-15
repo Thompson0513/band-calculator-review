@@ -1,3 +1,4 @@
+// 二次方程两根恒按 x1<x2 升序；§1a/1b/§5a/5b/5e 的 x1/x2 下标随之互换，根值与判别式口径不变。
 // 回归测试 1.5.20：第十四轮复审（针对 1.5.19）核实成立项修复 + 工具箱新工具「三角形面积」
 // N-01（P1）二次方程判别式相消：solveQuad(999999998, 999999999, 250000000)
 //   精确 Δ=1，旧版双精度 Δ 算成 0＋相对容差判零、误报重根 −0.5000000005。
@@ -34,8 +35,7 @@
 //   做（0.1+0.2=0.3 这类十进制退化不被浮点尾巴误判），精确形由四因子
 //   素因子分解合并平方因子给出（整数/分数/化简根式），因子超 1e12 或
 //   结果不可精确表示时只给小数。页面双显口径与全应用一致。
-import { readFileSync } from 'fs'
-import { execFileSync } from 'child_process'
+import { readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import calc from '../src/common/calc.js'
@@ -60,17 +60,21 @@ function loadPage() {
   globalThis.__storage = { get(o) { o.success('') }, set() {} }
   globalThis.__vibrator = { vibrate() {} }
   globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210' }) } }
+  globalThis.__router = { push() {}, back() {} }
   globalThis.__calc = calc
   globalThis.__paykey = { keyMatches: () => false, normalizeDeviceId: (s) => String(s == null ? '' : s).toUpperCase(), shortCodeForDevice: () => 'AAAAAA' }
   script = script
     .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
     .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
     .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
     .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
     .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
     .replace('export default', 'module.exports =')
   const tmp = join(tmpdir(), 'calc-page-1520-' + process.pid + '.cjs')
-  execFileSync(process.execPath, ['-e', 'require("fs").writeFileSync(process.argv[1], process.argv[2])', tmp, script])
+  // 【1.6.0 测试基建修订】页面脚本随 1.6.0 增长超过 128KB 命令行参数上限
+  // （E2BIG），loadPage 改直写落盘；断言与口径一概未动
+  writeFileSync(tmp, script)
   const mod = { exports: {} }
   new Function('module', 'exports', script)(mod, mod.exports)
   return mod.exports
@@ -120,13 +124,13 @@ function occOverlapY(labs) {
   const r = calc.solveQuad(999999998, 999999999, 250000000)
   eq('1a N-01 判两根（精确 Δ=1）', r.type, 'two')
   eq('1a N-01 disc 显示精确值 1', r.disc, 1)
-  ok('1a N-01 x1 与精确 −0.5 差 ≤1 ulp', Math.abs(r.x1 - (-0.5)) <= 1.2e-16, 'x1=' + r.x1)
-  eq('1a N-01 x1 显示 −0.5', FD(r.x1), '−0.5')
-  eq('1a N-01 x2 精确 −0.500000001', r.x2, -0.500000001)
+  ok('1a N-01 x2 与精确 −0.5 差 ≤1 ulp（1.6.0 自查 B4 修订：−0.5 现为 x2）', Math.abs(r.x2 - (-0.5)) <= 1.2e-16, 'x2=' + r.x2)
+  eq('1a N-01 x2 显示 −0.5', FD(r.x2), '−0.5')
+  eq('1a N-01 x1 精确 −0.500000001', r.x1, -0.500000001)
   // 页面级：Δ 行显示 1、x1 双显分数
   const inst = makeInst()
   inst.qa = '999999998'; inst.qb = '999999999'; inst.qc = '250000000'; inst.quadSolve()
-  eq('1b N-01 页面结果行', JSON.stringify(inst.qLines), JSON.stringify(['判别式 Δ = 1 > 0', 'x1 = −1/2 = −0.5', 'x2 = −0.500000001']))
+  eq('1b N-01 页面结果行', JSON.stringify(inst.qLines), JSON.stringify(['判别式 Δ = 1 > 0', 'x1 = −0.500000001', 'x2 = −1/2 = −0.5']))
 }
 // 守卫：真重根与近重根口径不回退（整数精确判零、小数容差路径各一）
 eq('1c 整数真重根仍判重根', calc.solveQuad(1, 2, 1).type, 'one')
@@ -145,7 +149,11 @@ eq('1g 守卫 (1,−0.2,0.01) 重根', calc.solveQuad(1, -0.2, 0.01).type, 'one'
     eq('1h 无 BigInt 时 N-01 仍判两根', calc.solveQuad(999999998, 999999999, 250000000).type, 'two')
     eq('1h 无 BigInt 时整数真重根仍判重根', calc.solveQuad(1, 2, 1).type, 'one')
     eq('1h 无 BigInt 时 N-02 仍判唯一解', calc.solveSystem(999999999, 999999998, 1, 999999998, 999999997, 2).type, 'one')
-    eq('1h 无 BigInt 时 triArea 精确形退纯小数', calc.triArea(2, 3, 4).exact, null)
+    // 【1.6.0 修订】原断言「无 BigInt 时 triArea 精确形退纯小数（exact=null）」已
+    // 被 1.6.0 发布前修复取代：模拟器实测手环运行时无 BigInt、三角形页只剩
+    // 「≈ 小数」违反双显口径，故 triArea 补纯 Number 精确兜底（中间量超安全
+    // 整数才放弃）；新口径由 regression-1.6.0 §10 守恒，此处同步翻转并披露。
+    eq('1h 无 BigInt 时 triArea 精确形（1.6.0 修订：Number 兜底）', JSON.stringify(calc.triArea(2, 3, 4).exact), JSON.stringify({ cn: 3, cd: 4, rad: 15 }))
   } finally { globalThis.BigInt = saved }
   eq('1h BigInt 恢复后 N-01 disc 复原', calc.solveQuad(999999998, 999999999, 250000000).disc, 1)
 }
@@ -233,12 +241,12 @@ ok('4h 落点：abs 透传 dirty 在位', calcSrc.includes("tk.v === 'abs' ? arg
 {
   const r = calc.solveQuad(1e200, -3e200, 2e200)
   eq('5a N-05 (1e200,−3e200,2e200) 判两根', r.type, 'two')
-  eq('5a N-05 大根 2', r.x1, 2)
-  eq('5a N-05 小根 1', r.x2, 1)
+  eq('5a N-05 大根 2', r.x2, 2)
+  eq('5a N-05 小根 1', r.x1, 1)
   const r2 = calc.solveQuad(1, 1e308, 1)
   eq('5b (1,1e308,1) 判两根', r2.type, 'two')
-  approx('5b 小根量级 1e-308', Math.abs(r2.x1), 1e-308, 1e-12)
-  approx('5b 大根量级 1e308', Math.abs(r2.x2), 1e308, 1e-12)
+  approx('5b 小根量级 1e-308', Math.abs(r2.x2), 1e-308, 1e-12)
+  approx('5b 大根量级 1e308', Math.abs(r2.x1), 1e308, 1e-12)
   const r3 = calc.solveQuad(1e200, 1e200, 1e200)
   eq('5c (1e200,1e200,1e200) 判复数根', r3.type, 'complex')
   eq('5c 复根 disc 精确 −3', r3.disc, -3)
@@ -249,7 +257,7 @@ ok('4h 落点：abs 透传 dirty 在位', calcSrc.includes("tk.v === 'abs' ? arg
   // 页面级翻转（原 1.5.6 D 组页面钉注已同步修订）
   const inst = makeInst()
   inst.qa = '1'; inst.qb = '1' + '0'.repeat(200); inst.qc = '1'; inst.quadSolve()
-  eq('5e 页面 (1,1e200,1) 显示两根', JSON.stringify(inst.qLines), JSON.stringify(['判别式 Δ = 1 > 0', 'x1 = −1×10⁻²⁰⁰', 'x2 = −1×10²⁰⁰']))
+  eq('5e 页面 (1,1e200,1) 显示两根', JSON.stringify(inst.qLines), JSON.stringify(['判别式 Δ = 1 > 0', 'x1 = −1×10²⁰⁰', 'x2 = −1×10⁻²⁰⁰']))
   eq('5e 页面可看图象', inst.qCanPlot, true)
 }
 // 归一化后仍真溢出的照旧报错（口径不变）

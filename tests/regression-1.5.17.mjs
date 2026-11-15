@@ -31,12 +31,14 @@ function loadPage(storageImpl) {
   globalThis.__storage = storageImpl
   globalThis.__vibrator = { vibrate() {} }
   globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210' }) } }
+  globalThis.__router = { push() {}, back() {} }
   globalThis.__calc = calc
   globalThis.__paykey = { keyMatches: () => false, normalizeDeviceId: (s) => String(s == null ? '' : s).toUpperCase(), shortCodeForDevice: () => 'AAAAAA' }
   script = script
     .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
     .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
     .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
     .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
     .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
     .replace('export default', 'module.exports =')
@@ -157,7 +159,7 @@ eq('3p 单位过程式（秒→周带回源）', buildUnitProc(4, 's', 'wk', 5),
   const lines = eqSolveLines('x²−0.00000000000003=0')
   eq('3s 整理成行课本式', lines[0], '整理成 x² − 3×10⁻¹⁴ = 0')
   eq('3s2 判别式行课本式', lines[1], '判别式 Δ = 1.2×10⁻¹³ > 0')
-  eq('3s3 根行课本式小数完整', lines[2], 'x1 ≈ 1.73205080757×10⁻⁷')
+  eq('3s3 根行课本式小数完整（1.6.0 自查 B4 修订：x1 为负根）', lines[2], 'x1 ≈ −1.73205080757×10⁻⁷')
 }
 
 // ---------- 4) 往返链 A：新格式 → 带回再算 ----------
@@ -219,7 +221,11 @@ eq('4e3 eqSign 负科学值 −2.5e-16 仍 =', calc.eqSign(-2.5e-16), '=')
   const i = makeInst()
   const sci = i.sciKeys.find((k) => k.v === 'x10')
   ok('6a 科学键盘含 ×10 键且键面课本式', !!sci && sci.label === '×10ˣ')
-  ok('6b 常数 e 键已下岗、总键数不变（20）', !i.sciKeys.some((k) => k.v === 'e') && i.sciKeys.length === 20)
+  // 【1.6.0 修订】常数 e 已在科学键盘恢复（24 键，另加 π、%、Ans）：1.5.17
+  // 下岗 e 的理由是怕与 e 记法混淆，而该版自己的课本式 ×10 显示已让 e 记法
+  // 从全部结果中消失、混淆源头消除；高中考题又离不开 e，故 1.6.0 定版恢复。
+  // 原断言钉的是当时的键表事实，随定版翻转，在此改判并披露（同 1.5.20 先例）
+  ok('6b【1.6.0 修订】常数 e 键已在科学键盘恢复、总键数 24', i.sciKeys.some((k) => k.v === 'e') && i.sciKeys.length === 24)
   ok('6c 内部仍可求值常数 e（求值层不动）', Math.abs(E('e') - Math.E) < 1e-15)
 }
 {
@@ -261,7 +267,7 @@ eq('6y sciEcho 非科学计数 ^ 不动（210^3）', sciEcho('210^3'), '210^3')
 eq('6z sciEcho 括号内独立 10^ 段', sciEcho('(10^−7)'), '(10⁻⁷)')
 eq('6aa 手打连按 ² 不折（防歧义守卫）', E('2×10²²'), 20000)
 eq('6ab 手打单个 ² 恒等折叠', E('2×10²'), 200)
-throws('6ac 手打 10²! 不折（阶乘域报错路径不变）', () => E('2×10²!'))
+ok('6ac 手打 10²! 给约数（1.6.0 自查 B5 修订：100! 不再报错，10²! 仍不折叠）', Math.abs(E('2×10²!') / 1.866524308878882e158 - 1) < 1e-12)
 ok('6ad 纯带回数值不误判真实计算（isRealCalc）', isRealCalc('1×10⁻⁹') === false && isRealCalc('1×10⁻⁹+1') === true)
 
 // ---------- 7) 宽度静态审计 ----------
@@ -285,7 +291,8 @@ ok('8b 单位极小值经 sciStr 收口', ux.includes("this.unitRes = '≈ ' + d
 ok('8c DP 出口经 sciStr 收口', (ux.match(/calc\.sciStr\(t\)\.replace/g) || []).length === 2)
 eq('8d toExponential 仅两处（fmtTick 与单位极小值，均在 sciStr 内）', (ux.match(/toExponential\(/g) || []).length, 2)
 ok('8e formatDisplay 经 sciStr 收口', calcSrc.includes('return dispMinus(sciStr(s))'))
-ok('8f 旧 ×10 键位：buildSciKeys 无 e 键定义', !ux.includes("{ v: 'e', label: 'e'"))
+// 【1.6.0 修订】e 键已定版恢复（理由同 §6b 修订注），本断言随之翻转
+ok('8f【1.6.0 修订】buildSciKeys 含 e 键定义（e 已恢复）', ux.includes("{ v: 'e', label: 'e'"))
 {
   const mf = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
   eq('8g manifest 版本锁 1.5.17/vc56', mf.versionName + '/' + mf.versionCode, '1.5.17/56')

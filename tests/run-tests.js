@@ -104,11 +104,13 @@ try { paykey = loadEsm(path.join(__dirname, '../src/common/paykey.js')) } catch 
 try { ppkey = loadEsm('/home/hatch/workspace/band-apps/pp-clean/src/common/key.js') } catch (e) {}
 const MOCK_ID = '0123456789abcdeffedcba9876543210'
 globalThis.__paykey = paykey || { keyMatches: () => false, normalizeDeviceId: (x) => String(x == null ? '' : x).toUpperCase(), shortCodeForDevice: () => 'AAAAAA' }
+globalThis.__router = { push() {}, back() {}, replace() {} }
 globalThis.__device = { getDeviceId(o) { o.success({ deviceId: MOCK_ID }) } }
 script = script
   .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
   .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
   .replace("import device from '@system.device'", 'const device = globalThis.__device')
+  .replace("import router from '@system.router'", 'const router = globalThis.__router')
   .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
   .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
   .replace('export default', 'module.exports =')
@@ -216,10 +218,12 @@ function makeInst(deviceImpl, store) {
   let s = fs.readFileSync(path.join(__dirname, '../src/pages/index/index.ux'), 'utf8')
   s = s.slice(s.indexOf('<script>') + 8, s.indexOf('</script>'))
   globalThis.__storage = { get(o) { o.success(store[o.key] || '') }, set(o) { store[o.key] = o.value } }
+  globalThis.__router = { push() {}, back() {}, replace() {} }
   globalThis.__device = deviceImpl
   s = s.replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
     .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
     .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
     .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
     .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
     .replace('export default', 'module.exports =')
@@ -383,11 +387,11 @@ const typeEq = (str) => { for (const ch of str) instEq.eqPad(ch === '^' ? '²' :
 typeEq('2x+3=7'); eq('敲入 2x+3=7', instEq.eqExpr, '2x+3=7')
 instEq.eqSolve(); ok('2x+3=7 解出 x=2', instEq.eqLines.join(' ').indexOf('x = 2') >= 0)
 instEq.eqPad('C'); typeEq('x²-5x+6=0'.replace('²', '²'))
-instEq.eqSolve(); ok('x²-5x+6=0 两根 3 与 2', instEq.eqLines.join(' ').indexOf('x1 = 3') >= 0 && instEq.eqLines.join(' ').indexOf('x2 = 2') >= 0)
+instEq.eqSolve(); ok('x²-5x+6=0 两根 2 与 3（1.6.0 自查 B4 修订：x1<x2 升序）', instEq.eqLines.join(' ').indexOf('x1 = 2') >= 0 && instEq.eqLines.join(' ').indexOf('x2 = 3') >= 0)
 instEq.eqPad('C'); typeEq('(1+2)²'); instEq.eqSolve()
 ok('(1+2)² 纯算式算出 9', instEq.eqLines.join(' ').indexOf('= 9') >= 0)
 instEq.eqPad('C'); typeEq('(x+1)²=4'); instEq.eqSolve()
-ok('(x+1)²=4 解出 1 与 -3', instEq.eqLines.join(' ').indexOf('x1 = 1') >= 0 && instEq.eqLines.join(' ').indexOf('−3') >= 0)
+ok('(x+1)²=4 解出 −3 与 1（1.6.0 自查 B4 修订：x1<x2 升序）', instEq.eqLines.join(' ').indexOf('x1 = −3') >= 0 && instEq.eqLines.join(' ').indexOf('x2 = 1') >= 0)
 instEq.eqPad('C'); typeEq('1/2x=1/4'.replace('1/4', '1/4')); instEq.eqSolve()
 ok('分数系数 (1/2)x=1/4 解出 0.5', instEq.eqLines.join(' ').indexOf('0.5') >= 0)
 instEq.eqPad('C'); typeEq('2x+'); instEq.eqPad('×'); eq('运算符连打替换', instEq.eqExpr, '2x×')
@@ -441,7 +445,7 @@ ok('主屏 1÷4 显示 =', instA.resDisp.indexOf('=') === 0)
 instA.expr = 'x'; instA.refreshCalc()
 const instQ = makeInst(goodDevice, {})
 instQ.view = 'eqin'; instQ.eqExpr = 'x²=2'; instQ.eqChars1 = instQ.eqExpr.split(''); instQ.eqSolve()
-ok('输入方程 x²=2 给根式精确形且小数带 ≈', instQ.eqLines.join(' ').indexOf('x1 = √2') >= 0 && instQ.eqLines.join(' ').indexOf('≈') >= 0)
+ok('输入方程 x²=2 给根式精确形且小数带 ≈（1.6.0 自查 B4 修订：x1 为负根）', instQ.eqLines.join(' ').indexOf('x1 = −√2') >= 0 && instQ.eqLines.join(' ').indexOf('≈') >= 0)
 
 // ===== 1.4.8：按 = 后只显示结果行，不再上下两行重复 =====
 const instE = makeInst(goodDevice, {})

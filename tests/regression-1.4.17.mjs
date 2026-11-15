@@ -32,16 +32,16 @@ eq('方程组全零行守卫', calc.solveSystem(0, 0, 5, 1, 1, 2).type, 'none')
 // ---------- 2) solveQuad 稳定求根 ----------
 { const r = calc.solveQuad(1, 999999999, 1)
   eq('大系数二次 type', r.type, 'two')
-  approx('大系数小根', r.x1, -1.000000001e-9, 1e-6)
-  approx('大系数大根', r.x2, -999999999, 1e-12)
-  ok('大系数两根代回', Math.abs(r.x1 * r.x1 + 999999999 * r.x1 + 1) < 1e-6, '小根代回残差过大') }
+  approx('大系数小根', r.x2, -1.000000001e-9, 1e-6)
+  approx('大系数大根', r.x1, -999999999, 1e-12)
+  ok('大系数两根代回', Math.abs(r.x2 * r.x2 + 999999999 * r.x2 + 1) < 1e-6, '小根代回残差过大') }
 { const r = calc.solveQuad(1, -999999999, 1)
-  approx('大系数正小根', r.x1, 999999999, 1e-12)
-  approx('大系数正小根2', r.x2, 1.000000001e-9, 1e-6) }
-{ const r = calc.solveQuad(1, -3, 2); approx('常规两根 x1 顺序', r.x1, 2); approx('常规两根 x2 顺序', r.x2, 1) }
-{ const r = calc.solveQuad(1, 0, -4); eq('b=0 type', r.type, 'two'); approx('b=0 x1', r.x1, 2); approx('b=0 x2', r.x2, -2) }
-{ const r = calc.solveQuad(1, 3, 0); ok('c=0 真零根在 x1', Math.abs(r.x1) === 0, 'x1=' + r.x1); approx('c=0 x2', r.x2, -3) }
-{ const r = calc.solveQuad(1, -3, 0); approx('c=0 x1', r.x1, 3); ok('c=0 真零根在 x2', Math.abs(r.x2) === 0, 'x2=' + r.x2) }
+  approx('大系数正大根', r.x2, 999999999, 1e-12)
+  approx('大系数正小根', r.x1, 1.000000001e-9, 1e-6) }
+{ const r = calc.solveQuad(1, -3, 2); approx('常规两根 x1 顺序', r.x1, 1); approx('常规两根 x2 顺序', r.x2, 2) }
+{ const r = calc.solveQuad(1, 0, -4); eq('b=0 type', r.type, 'two'); approx('b=0 x1', r.x1, -2); approx('b=0 x2', r.x2, 2) }
+{ const r = calc.solveQuad(1, 3, 0); ok('c=0 真零根在 x2', Math.abs(r.x2) === 0, 'x2=' + r.x2); approx('c=0 x1', r.x1, -3) }
+{ const r = calc.solveQuad(1, -3, 0); approx('c=0 x2', r.x2, 3); ok('c=0 真零根在 x1', Math.abs(r.x1) === 0, 'x1=' + r.x1) }
 eq('重根', calc.solveQuad(1, 2, 1).type, 'one')
 eq('复数根', calc.solveQuad(1, 0, 4).type, 'complex')
 eq('a=0 退化一次', calc.solveQuad(0, 2, -4).type, 'linear')

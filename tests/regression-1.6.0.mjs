@@ -1,0 +1,867 @@
+// 回归测试 1.6.0：系数输入全面升级（√、π、e、括号）+ 单项式符号层 + 新工具「圆」
+// 背景（用户 2026-11-15 定版）：「根号以及 π 等的那些可能需要输入的那些你都
+// 看看，比如 π 输出的结果也可以带它，这样的话就不用精确计算」，并拍板与既有
+// 工作融成一版 1.6.0；又问「根据考题以及那些实际要求，有必要再加些别的吗」。
+// 本版内容：
+//  ① 系数键盘改 5 列（QUAD_KEYS 20 键）：加 √、π、e、) ——系数格（一次/二次/
+//     方程组/图象设置/三角形/圆）从纯数字分数升级为可输单项式式子。只有右括
+//     号没左括号是刻意的：左括号唯一来源是 √ 键自带的 '√('，右括号负责关它
+//     （√3/2 的 / 必须落在根号外）；未关的根号解析时自动补齐（coeffSrc）。
+//  ② parseCoeff 升级：纯数字/分数走旧快路径（逐字旧口径、regression-1.4.17
+//     的抽取直测守恒）；带符号式子走 calc.evaluate（coeffSrc 补隐含乘号与括号）。
+//  ③ 单项式符号层（parseMono/monoMul/monoDiv/monoSub/monoSqrt/monoStr）：
+//     系数是「有理数 × π^p × √m」形态时，结果也给符号形——一次方程符号解
+//     （πx = 2 → x = 2/π）、三角形同签名单项式边提公共因子（等边 π → √3π²/4）、
+//     圆的周长/面积天然带 π。推不出符号形（带 e、和式、根套根）回落数值，
+//     数值路径永远先行、符号层只管显示与判定，符号形必经数值自检才显示。
+//  ④ 新工具「圆」：输半径出周长＋面积（半径可输 √、π），符号形＋小数双显。
+//  ⑤ 输入方程键盘改 5 列（30 键）：加 √(、π、e、^、%、°（求值层本来就认，
+//     旧版只是没键可敲）；符号键补隐含乘号、后缀键带守卫。
+//  ⑥ 科学键盘恢复常数 e 并补 π、%、Ans（24 键）：e 在 1.5.17 随 ×10ˣ 让位
+//     下岗（怕与 e 记法混淆），而 1.5.17 的课本式 ×10 显示已让 e 记法从全部
+//     结果中消失、混淆源头消除，高中考题又离不开 e——regression-1.5.17 的
+//     §6b 旧断言已按定版翻转并在原文件标注披露（同 1.5.20 修订旧断言先例）。
+//  不动：整数键盘（分数/公约数/根号化简页）、单位换算页、进制页、paykey、
+//  既有精确形口径（分数/根式/eqSign）。
+//  发布前追加修复（2026-11-15）：① 黑屏——calc.js 里 1.5.20 引入的 16 处
+//  BigInt 字面量被手环 QuickJS 拒绝解析，全部改 BigInt() 构造（见 §9i-k）；
+//  ② triArea 精确形补无 BigInt 的纯 Number 兜底（见 §10）。求值/求解核心的
+//  语义口径不变，两处均为运行时兼容修复、Node 行为逐字守恒。
+import { readFileSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import calc from '../src/common/calc.js'
+import calc2 from '../src/common/calc2.js'
+
+let pass = 0, fail = 0
+function ok(name, cond, extra) { if (cond) { pass++ } else { fail++; console.log('FAIL', name, extra == null ? '' : extra) } }
+function eq(name, got, want) { ok(name + '（got=' + JSON.stringify(got) + '）', got === want, 'want=' + JSON.stringify(want)) }
+function approx(name, got, want, rel) { ok(name + '（got=' + got + '）', isFinite(got) && Math.abs(got / want - 1) <= (rel || 1e-9)) }
+const FD = (v) => calc.formatDisplay(v)
+
+const uxPath = new URL('../src/pages/index/index.ux', import.meta.url).pathname
+const ux = readFileSync(uxPath, 'utf8')
+const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
+const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
+let buglog = null
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z 断言按 SKIP 处理 */ }
+
+function loadPage(keyOk) {
+  let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
+  globalThis.__storage = { get(o) { o.success('') }, set() {} }
+  globalThis.__vibrator = { vibrate() {} }
+  globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210' }) } }
+  globalThis.__router = { push() {}, back() {}, replace() {} }
+  globalThis.__calc = calc
+  globalThis.__paykey = { keyMatches: keyOk ? () => true : () => false, normalizeDeviceId: (s) => String(s == null ? '' : s).toUpperCase(), shortCodeForDevice: () => 'AAAAAA' }
+  script = script
+    .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
+    .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
+    .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
+    .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
+    .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
+    .replace('export default', 'module.exports =')
+  const tmp = join(tmpdir(), 'calc-page-160-' + process.pid + '.cjs')
+  // 页面脚本已 >128KB（1.6.0 增长），不能再走命令行参数传递（E2BIG），直接落盘
+  writeFileSync(tmp, script)
+  const mod = { exports: {} }
+  new Function('module', 'exports', script)(mod, mod.exports)
+  return mod.exports
+}
+const def = loadPage()
+function makeInst() {
+  const inst = {}
+  Object.assign(inst, JSON.parse(JSON.stringify(def.data)))
+  for (const k of Object.keys(def)) if (typeof def[k] === 'function') inst[k] = def[k].bind(inst)
+  inst.onInit()
+  inst.unlocked = true
+  return inst
+}
+// 第二页（pages/tools2）加载器：四个新工具因手环 QuickJS 堆上限拆到独立页
+// （见 §9 注释与 BUGLOG 1.6.0），页面级断言改走这里。
+function loadPage2() {
+  let script = ux2.slice(ux2.indexOf('<script>') + 8, ux2.indexOf('</script>'))
+  globalThis.__storage = { get(o) { o.success('') }, set() {} }
+  globalThis.__vibrator = { vibrate() {} }
+  globalThis.__device = { getDeviceId(o) { o.success({ deviceId: '0123456789abcdeffedcba9876543210' }) } }
+  globalThis.__router = { push() {}, back() {}, replace() {} }
+  globalThis.__calc = calc
+  globalThis.__calc2 = calc2
+  globalThis.__paykey = { keyMatches: () => false, normalizeDeviceId: (s) => String(s == null ? '' : s).toUpperCase(), shortCodeForDevice: () => 'AAAAAA' }
+  script = script
+    .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
+    .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
+    .replace("import device from '@system.device'", 'const device = globalThis.__device')
+    .replace("import router from '@system.router'", 'const router = globalThis.__router')
+    .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
+    .replace("import calc2 from '../../common/calc2'", 'const calc2 = globalThis.__calc2')
+    .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
+    .replace('export default', 'module.exports =')
+  const mod = { exports: {} }
+  new Function('module', 'exports', script)(mod, mod.exports)
+  return mod.exports
+}
+const def2 = loadPage2()
+function makeInst2() {
+  const inst = {}
+  Object.assign(inst, JSON.parse(JSON.stringify(def2.data)))
+  for (const k of Object.keys(def2)) if (typeof def2[k] === 'function') inst[k] = def2[k].bind(inst)
+  inst.onInit()
+  inst.unlocked = true
+  return inst
+}
+// 页面独立函数抽取（parseCoeff 的旧快路径须在无 calc 依赖下与 1.4.17 同口径，
+// 这里带 calc 抽取测全量表达式路径）
+function extractFn(name) {
+  const start = ux.indexOf('function ' + name + '(')
+  if (start < 0) throw new Error('找不到函数 ' + name)
+  let depth = 0, i = ux.indexOf('{', start)
+  const from = i
+  for (; i < ux.length; i++) {
+    if (ux[i] === '{') depth++
+    else if (ux[i] === '}') { depth--; if (depth === 0) return ux.slice(start, i + 1) }
+  }
+  throw new Error('函数未配平 ' + name)
+}
+const FN = ['coeffSrc', 'parseCoeff', 'parseCoeff0', 'editCoeff', 'gcd2', 'monoRed', 'monoMul', 'monoInv', 'monoDiv', 'monoSub', 'monoSqrt', 'parseMono', 'monoOf', 'monoStr']
+const F = new Function('calc', FN.map(extractFn).join('\n') + '\nreturn { ' + FN.join(', ') + ' }')(calc)
+const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad)
+
+// ---------- §1 parseCoeff：旧口径守恒 + 表达式路径 ----------
+{
+  ok('1a 空串 NaN', isNaN(F.parseCoeff('')))
+  ok('1a 半截负号 NaN', isNaN(F.parseCoeff('-')))
+  eq('1b 分数 1/2', F.parseCoeff('1/2'), 0.5)
+  eq('1b 分数 -3/4', F.parseCoeff('-3/4'), -0.75)
+  ok('1b 分母 0 NaN', isNaN(F.parseCoeff('1/0')))
+  eq('1b 小数 2.5', F.parseCoeff('2.5'), 2.5)
+  ok('1b 半截分数 3/ NaN', isNaN(F.parseCoeff('3/')))
+  eq('1c 留空按 0', F.parseCoeff0(''), 0)
+  approx('1d √(4) = 2', F.parseCoeff('√(4)'), 2)
+  approx('1d 光秃秃 √2 自动补括号', F.parseCoeff('√2'), Math.sqrt(2))
+  approx('1d 2√(3)', F.parseCoeff('2√(3)'), 2 * Math.sqrt(3))
+  approx('1d π', F.parseCoeff('π'), Math.PI)
+  approx('1d 2π', F.parseCoeff('2π'), 2 * Math.PI)
+  approx('1d π/2', F.parseCoeff('π/2'), Math.PI / 2)
+  approx('1d √(2/3)', F.parseCoeff('√(2/3)'), Math.sqrt(2 / 3))
+  approx('1d √(3)/2（根号外的除法）', F.parseCoeff('√(3)/2'), Math.sqrt(3) / 2)
+  approx('1d 常数 e', F.parseCoeff('e'), Math.E)
+  approx('1d 2e 是 2×e（隐含乘号）', F.parseCoeff('2e'), 2 * Math.E)
+  approx('1d e2 是 e×2', F.parseCoeff('e2'), 2 * Math.E)
+  approx('1d 未闭合 √(3 自动补齐', F.parseCoeff('√(3'), Math.sqrt(3))
+  ok('1e 半截 √(', isNaN(F.parseCoeff('√(')))
+  ok('1e 空根号 √()', isNaN(F.parseCoeff('√()')))
+  ok('1e 根号后悬空除号 √(3)/', isNaN(F.parseCoeff('√(3)/')))
+  ok('1e 负数开方 √(0-4)... 系数格无减号键，用 √(-4) 直测', isNaN(F.parseCoeff('√(-4)')))
+}
+
+// ---------- §2 editCoeff：按键序列 ----------
+{
+  const seq = (keys, from) => { let s = from || ''; for (const k of keys) { const r = F.editCoeff(s, k); if (r !== 'NEXT') s = r } return s }
+  eq('2a 敲 √(3)/2', seq(['sqrt', '3', ')', '/', '2']), '√(3)/2')
+  eq('2a 敲 √(2/3)', seq(['sqrt', '2', '/', '3', ')']), '√(2/3)')
+  eq('2a 敲 2√3（不关根号也合法）', seq(['2', 'sqrt', '3']), '2√(3')
+  eq('2a 敲 π/2', seq(['pi', '/', '2']), 'π/2')
+  eq('2b ± 切换', seq(['neg'], 'π'), '-π')
+  eq('2b ± 切回', seq(['neg', 'neg'], ''), '')
+  eq('2c 空格按 . 给 0.', seq(['.']), '0.')
+  eq('2c 根号后禁 /', seq(['sqrt', '/']), '√(')
+  eq('2c 开头禁 /', seq(['/']), '')
+  eq('2c 右括号后禁 .', seq(['sqrt', '2', ')', '.']), '√(2)')
+  eq('2d C 清空', seq(['sqrt', '3', 'C']), '')
+  eq('2d 退格逐字删', seq(['sqrt', 'back']), '√')
+  eq('2e 20 字上限', seq(Array(25).fill('9')).length, 20)
+  eq('2f 前导零替换', seq(['0', '5']), '5')
+  // 纯数字模式守恒 1.4.1 旧口径（run-tests 钉住的三条，editCoeff 必须同行为）
+  eq('2g 纯分数第二个 / 被拒', seq(['1', '/', '2', '/']), '1/2')
+  eq('2g 分数里不许再打小数点', seq(['1', '/', '2', '.']), '1/2')
+  eq('2g 分母前导零被替换', seq(['1', '/', '0', '5']), '1/5')
+  eq('2h 带根号才放行第二层 /', seq(['sqrt', '2', '/', '3', ')', '/', '2']), '√(2/3)/2')
+  eq('2h 根号内可打小数', seq(['sqrt', '2', '.', '5']), '√(2.5')
+}
+
+// ---------- §3 parseMono / monoStr：符号层代数 ----------
+{
+  const M = (s) => F.parseMono(s)
+  eq('3a π', JSON.stringify(M('π')), JSON.stringify({ qn: 1, qd: 1, pi: 1, rad: 1 }))
+  eq('3a 2√(3)', JSON.stringify(M('2√(3)')), JSON.stringify({ qn: 2, qd: 1, pi: 0, rad: 3 }))
+  eq('3a √(2/3) = √6/3', JSON.stringify(M('√(2/3)')), JSON.stringify({ qn: 1, qd: 3, pi: 0, rad: 6 }))
+  eq('3a √(3)/2', JSON.stringify(M('√(3)/2')), JSON.stringify({ qn: 1, qd: 2, pi: 0, rad: 3 }))
+  eq('3a √(12) 化简 2√3', JSON.stringify(M('√(12)')), JSON.stringify({ qn: 2, qd: 1, pi: 0, rad: 3 }))
+  eq('3a √(4) = 2', JSON.stringify(M('√(4)')), JSON.stringify({ qn: 2, qd: 1, pi: 0, rad: 1 }))
+  eq('3a 2√(3)π', JSON.stringify(M('2√(3)π')), JSON.stringify({ qn: 2, qd: 1, pi: 1, rad: 3 }))
+  eq('3a -√(2)', JSON.stringify(M('-√(2)')), JSON.stringify({ qn: -1, qd: 1, pi: 0, rad: 2 }))
+  ok('3b 带 e 推不出', M('e') === null)
+  ok('3b √(π) 推不出（π 奇数幂开方）', M('√(π)') === null)
+  ok('3b 根套根推不出', M('√(√(2))') === null)
+  ok('3b 未闭合推不出', M('√(3') === null)
+  eq('3c monoStr 2/π', F.monoStr(M('2/π')), '2/π')
+  eq('3c monoStr π/2', F.monoStr(M('π/2')), 'π/2')
+  eq('3c monoStr √3/2', F.monoStr(M('√(3)/2')), '√3/2')
+  eq('3c monoStr 2√3π', F.monoStr(M('2√(3)π')), '2√3π')
+  eq('3c monoStr −√2', F.monoStr(M('-√(2)')), '−√2')
+  eq('3c monoStr 纯整数', F.monoStr(M('5')), '5')
+  eq('3c monoStr 分母两项加括号', F.monoStr({ qn: 3, qd: 2, pi: -1, rad: 1 }), '3/(2π)')
+  // 符号值与数值解析交叉核对（符号层只许在与数值一致时出现）
+  for (const s of ['π', '2π', 'π/2', '2√(3)', '√(2/3)', '√(3)/2', '√(12)', '3/4', '2√(3)π', '√(5)/5', '10/π']) {
+    approx('3d 符号值=数值 ' + s, monoVal(M(s)), F.parseCoeff(s))
+  }
+  eq('3e monoSub 同签名相减', JSON.stringify(F.monoSub(M('2π'), M('π'))), JSON.stringify({ qn: 1, qd: 1, pi: 1, rad: 1 }))
+  ok('3e monoSub 异签名推不出', F.monoSub(M('π'), M('1')) === null)
+  eq('3e monoDiv 2/π', JSON.stringify(F.monoDiv(M('2'), M('π'))), JSON.stringify({ qn: 2, qd: 1, pi: -1, rad: 1 }))
+  eq('3e monoOf 空串为零单项式', JSON.stringify(F.monoOf('')), JSON.stringify({ qn: 0, qd: 1, pi: 0, rad: 1 }))
+}
+
+// ---------- §4 一次方程：符号解 ----------
+{
+  const inst = makeInst()
+  inst.la = 'π'; inst.lb = '0'; inst.lc = '0'; inst.ld = '2'; inst.linSolve()
+  ok('4a πx = 2 → x = 2/π 带符号形', inst.lLines[0].indexOf('x = 2/π') === 0 && inst.lLines[0].indexOf('≈') > 0, inst.lLines[0])
+  inst.la = '√(2)'; inst.ld = '2'; inst.linSolve()
+  ok('4b √2x = 2 → x = √2', inst.lLines[0].indexOf('x = √2') === 0, inst.lLines[0])
+  inst.la = '2'; inst.ld = 'π'; inst.linSolve()
+  ok('4c 2x = π → x = π/2', inst.lLines[0].indexOf('x = π/2') === 0, inst.lLines[0])
+  inst.la = 'e'; inst.ld = '2'; inst.linSolve()
+  ok('4d ex = 2 只给数值（e 推不出符号形）', inst.lLines[0].indexOf('π') < 0 && inst.lLines[0].indexOf('√') < 0 && inst.lLines[0].indexOf('0.735758882343') >= 0, inst.lLines[0])
+  inst.la = '2'; inst.lb = '3'; inst.lc = '0'; inst.ld = '7'; inst.linSolve()
+  eq('4e 有理基线逐字不变', inst.lLines[0], 'x = 2')
+}
+
+// ---------- §5 二次方程：符号系数数值解 + 基线 ----------
+{
+  const inst = makeInst()
+  inst.qa = '√(2)'; inst.qb = '0'; inst.qc = '-2'; inst.quadSolve()
+  ok('5a √2x²−2=0 给数值根', inst.qLines.length === 3 && inst.qLines[1].indexOf('1.18920711') >= 0, JSON.stringify(inst.qLines))
+  inst.qa = 'π'; inst.qb = '0'; inst.qc = '-π'; inst.quadSolve()
+  ok('5b πx²−π=0 根为 ±1', inst.qLines.length === 3 && inst.qLines[1].indexOf('x1') === 0 && inst.qLines[1].indexOf('1') >= 0, JSON.stringify(inst.qLines))
+  inst.qa = '1'; inst.qb = '-3'; inst.qc = '2'; inst.quadSolve()
+  eq('5c 基线判别式行', inst.qLines[0], '判别式 Δ = 1 > 0')
+  eq('5c 基线 x1（1.6.0 自查 B4 修订：x1<x2）', inst.qLines[1], 'x1 = 1')
+  eq('5c 基线 x2（1.6.0 自查 B4 修订：x1<x2）', inst.qLines[2], 'x2 = 2')
+}
+
+// ---------- §6 三角形面积：符号边 ----------
+{
+  const inst = makeInst()
+  eq('6a 基线 3/4/5', JSON.stringify(inst.tLines), JSON.stringify(['面积 = 6']))
+  inst.ta = 'π'; inst.tb = 'π'; inst.tc = 'π'; inst.triSolve()
+  eq('6b 等边 π → √3π²/4', inst.tLines[0], '面积 = √3π²/4')
+  eq('6b 等边 π 小数行', inst.tLines[1], '≈ ' + FD(calc.triArea(Math.PI, Math.PI, Math.PI).area))
+  inst.ta = '2π'; inst.tb = '2π'; inst.tc = '2π'; inst.triSolve()
+  eq('6c 等边 2π → √3π²', inst.tLines[0], '面积 = √3π²')
+  inst.ta = '√(2)'; inst.tb = '2√(2)'; inst.tc = '2√(2)'; inst.triSolve()
+  eq('6d √2 系等腰 → √15/2', inst.tLines[0], '面积 = √15/2')
+  eq('6d 小数行与数值路径一致', inst.tLines[1], '≈ ' + FD(calc.triArea(Math.sqrt(2), 2 * Math.sqrt(2), 2 * Math.sqrt(2)).area))
+  inst.ta = 'π'; inst.tb = 'π'; inst.tc = '1'; inst.triSolve()
+  ok('6e 异签名（π,π,1）回落数值', inst.tLines[0].indexOf('面积 ≈ ') === 0, inst.tLines[0])
+  inst.ta = 'π'; inst.tb = 'π'; inst.tc = '2π'; inst.triSolve()
+  eq('6f π 系退化精确判定', inst.tLines[0], '退化成一条直线，面积 = 0')
+  inst.ta = 'π'; inst.tb = '2π'; inst.tc = '10π'; inst.triSolve()
+  eq('6g π 系构不成精确判定', inst.tLines[0], '不能构成三角形')
+  inst.ta = 'π'; inst.tb = '1'; inst.tc = '10'; inst.triSolve()
+  eq('6h 普通构不成不变', inst.tLines[0], '不能构成三角形')
+}
+
+// ---------- §7 圆（新工具） ----------
+{
+  const inst = makeInst()
+  eq('7a r=1 周长', inst.cLines[0], '周长 = 2π')
+  eq('7a r=1 周长小数', inst.cLines[1], '≈ 6.28318530718')
+  eq('7a r=1 面积', inst.cLines[2], '面积 = π')
+  eq('7a r=1 面积小数', inst.cLines[3], '≈ 3.14159265359')
+  inst.cr = '3'; inst.circSolve()
+  eq('7b r=3 周长', inst.cLines[0], '周长 = 6π')
+  eq('7b r=3 面积', inst.cLines[2], '面积 = 9π')
+  eq('7b r=3 面积小数', inst.cLines[3], '≈ ' + FD(9 * Math.PI))
+  inst.cr = '√(2)'; inst.circSolve()
+  eq('7c r=√2 周长', inst.cLines[0], '周长 = 2√2π')
+  eq('7c r=√2 面积', inst.cLines[2], '面积 = 2π')
+  inst.cr = 'π'; inst.circSolve()
+  eq('7d r=π 周长', inst.cLines[0], '周长 = 2π²')
+  eq('7d r=π 面积', inst.cLines[2], '面积 = π³')
+  inst.cr = '0'; inst.circSolve()
+  eq('7e 半径 0 报错', inst.cLines[0], '半径要大于 0')
+  inst.cr = ''; inst.circSolve()
+  eq('7e 半径空提示', inst.cLines[0], '把半径填好就能算')
+  inst.cr = 'e'; inst.circSolve()
+  ok('7f r=e 只给数值', inst.cLines.length === 2 && inst.cLines[0].indexOf('周长 ≈ ') === 0, JSON.stringify(inst.cLines))
+  const inst2 = makeInst()
+  inst2.cr = ''; inst2.circSolve()
+  inst2.circPad('sqrt'); inst2.circPad('2'); inst2.circPad(')')
+  eq('7g circPad 敲出 √(2)', inst2.cr, '√(2)')
+  eq('7g 敲完即出符号面积', inst2.cLines[2], '面积 = 2π')
+}
+
+// ---------- §8 键盘与输入链 ----------
+{
+  const inst = makeInst()
+  eq('8a 系数键盘 20 键', inst.quadKeys.length, 20)
+  ok('8a 系数键盘含 √/π/e/)///±', ['sqrt', 'pi', 'e', ')', '/', 'neg'].every((v) => inst.quadKeys.some((k) => k.v === v)))
+  ok('8a 系数键盘无 00、无左括号', !inst.quadKeys.some((k) => k.v === '00') && !inst.quadKeys.some((k) => k.v === '('))
+  eq('8b 方程键盘 30 键', inst.eqKeys.length, 30)
+  ok('8b 方程键盘含 √(、π、e、^、%、°', ['√(', 'π', 'e', '^', '%', '°'].every((v) => inst.eqKeys.some((k) => k.v === v)))
+  const k2 = inst.eqKeys.find((k) => k.v === '²')
+  ok('8b ² 键旧属性不变（run-tests 同口径）', k2.label === '²' && k2.kcls === 'eqsup-k')
+  eq('8c 科学键盘 24 键', inst.sciKeys.length, 24)
+  ok('8c 科学键盘含 e、π、%、Ans、×10', ['e', 'π', '%', 'ans', 'x10'].every((v) => inst.sciKeys.some((k) => k.v === v)))
+  // 系数页敲键链：quadPad 把 √(3) 敲进 a 格并实时求解（不报错）
+  inst.qa = ''; inst.qField = 'a'
+  inst.quadPad('sqrt'); inst.quadPad('3'); inst.quadPad(')')
+  eq('8d quadPad 敲出 √(3)', inst.qa, '√(3)')
+  ok('8d 带根号系数实时出判别式行', inst.qLines[0].indexOf('判别式') === 0, JSON.stringify(inst.qLines))
+  // 输入方程敲符号：√(2)x=4、πx+1=0
+  const ie = makeInst()
+  for (const v of ['√(', '2', ')', 'x', '=', '4']) ie.eqPad(v)
+  eq('8e eqPad 敲出 √(2)x=4', ie.eqExpr, '√(2)x=4')
+  ie.eqSolve()
+  ok('8e √(2)x=4 解出 2√2 的小数', ie.eqLines.join(' ').indexOf('2.8284271247') >= 0, JSON.stringify(ie.eqLines))
+  const ie2 = makeInst()
+  for (const v of ['π', 'x', '+', '1', '=', '0']) ie2.eqPad(v)
+  eq('8f eqPad 敲出 πx+1=0', ie2.eqExpr, 'πx+1=0')
+  ie2.eqSolve()
+  ok('8f πx+1=0 解出 −1/π 的小数', ie2.eqLines.join(' ').indexOf('0.318309886184') >= 0, JSON.stringify(ie2.eqLines))
+  const ie3 = makeInst()
+  ie3.eqPad('^')
+  eq('8g 空式子按 ^ 忽略', ie3.eqExpr, '')
+  ie3.eqPad('π'); ie3.eqPad('²')
+  eq('8g π² 可敲', ie3.eqExpr, 'π²')
+  // 主计算器科学键盘常数链
+  const ic = makeInst()
+  ic.padPage = 'sci'
+  ic.pressKey('π')
+  approx('8h 科学键盘 π 预览', ic.previewVal, Math.PI)
+  ic.pressKey('C'); ic.pressKey('e')
+  approx('8h 科学键盘 e 预览', ic.previewVal, Math.E)
+  ic.pressKey('C'); ic.pressKey('2'); ic.pressKey('π')
+  eq('8h 数字后 π 补隐含乘号', ic.expr, '2×π')
+}
+
+// ---------- §9 未动面守卫 + 落点审计 ----------
+{
+  const inst = makeInst()
+  eq('9a 公约数基线不变', JSON.stringify(inst.gLines), JSON.stringify(['最大公约数 = 6', '最小公倍数 = 36']))
+  eq('9b 根号化简基线不变', inst.sqrtLines[0], '√12 = 2√3')
+  eq('9c 工具箱 14 个工具（圆 + 微信定案四个新工具）', inst.tools.length, 14)
+  ok('9c 工具列表含圆', inst.tools.some((t) => t.id === 'circ'))
+  ok('9c 工具列表含四个新工具', ['rtri', 'law', 'perm', 'seq'].every((id) => inst.tools.some((t) => t.id === id)))
+  ok('9d 模板含圆视图', ux.indexOf("view === 'circ'") >= 0)
+  const tpl = ux.split('<script>')[0]
+  const divs = tpl.match(/<div[^>]*>/g) || []
+  eq('9e 模板无裸 div（1.5.20 钉注守恒）', divs.filter((d) => !/class=/.test(d)).length, 0)
+  ok('9f 五个系数页 + 圆页都走 editCoeff', (ux.match(/editCoeff\(/g) || []).length >= 7)
+  if (buglog === null) console.log('SKIP 9g BUGLOG 含 1.6.0 条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+  else ok('9g BUGLOG 含 1.6.0 条目', buglog.indexOf('1.6.0') >= 0)
+  eq('9h manifest 版本锁 1.6.0/60', man.versionName + '/' + man.versionCode, '1.6.0/60')
+  // 黑屏真因守卫（2026-11-15 二分实测定案）：1.5.20 的黑屏与「体积」无关——
+  // 同体积的 1.5.16 源码在模拟器正常、1.5.20 失败，真因是手环 Vela 的
+  // QuickJS 构建不带 BigInt，BigInt 字面量（4n、0n、10n 等）是解析期语法，
+  // typeof 守卫挡不住——模块解析失败（日志 TypeError: bytecode function
+  // expected + Failed to load page）整页黑屏。1.5.20 第十四轮 N-01/N-02 修复
+  // 引入 16 处字面量，Node/V8 能解析所以全套测试全过、测不出来。修复口径：
+  // 字面量一律改 BigInt() 构造（运行时调用、有守卫兜底）。本守卫逐字扫描
+  // 源文件，字面量零容忍，防复发。（注：堆上限是另一个真问题——带四工具的
+  // 整包在设备上编译驻留会撞约 7.6MB 的 QuickJS 堆上限，靠拆页＋JSC 预编译
+  // 打包解决，见下面拆页守卫与 BUGLOG 1.6.0 发布前追加节。）
+  const litRe = /(?<![\w$.])\d+n(?![\w$])/g
+  const calcSrc = readFileSync(new URL('../src/common/calc.js', import.meta.url), 'utf8')
+  let paySrc = null
+  try { paySrc = readFileSync(new URL('../src/common/paykey.js', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] paykey.js 不入公开仓，缺失时 9k 断言按 SKIP 处理 */ }
+  eq('9i 黑屏守卫：calc.js 无 BigInt 字面量', (calcSrc.match(litRe) || []).length, 0)
+  eq('9j 黑屏守卫：index.ux 无 BigInt 字面量', (ux.match(litRe) || []).length, 0)
+  if (paySrc === null) console.log('SKIP 9k 黑屏守卫：paykey.js 无 BigInt 字面量（[审查仓适配] paykey.js 不在公开仓）')
+  else eq('9k 黑屏守卫：paykey.js 无 BigInt 字面量', (paySrc.match(litRe) || []).length, 0)
+  // 拆页守卫（2026-11-15 实测定案第二幕）：BigInt 修复后，带四个新工具的整包
+  // 在模拟器加载/初始化时撞 QuickJS 堆上限（日志 __out_of_memory_tracker +
+  // bytecode 约 6.8MB），四个新工具（视图+方法+引擎）拆到第二页 pages/tools2、
+  // 引擎独立为 common/calc2.js（只被第二页引用），主页堆占用回落。守卫：
+  // 第二页与 calc2.js 同样零 BigInt 字面量、模板无裸 div、manifest 路由齐全。
+  const calc2Src = readFileSync(new URL('../src/common/calc2.js', import.meta.url), 'utf8')
+  eq('9l 黑屏守卫：calc2.js 无 BigInt 字面量', (calc2Src.match(litRe) || []).length, 0)
+  eq('9m 黑屏守卫：tools2 无 BigInt 字面量', (ux2.match(litRe) || []).length, 0)
+  const tpl2 = ux2.split('<script>')[0]
+  const divs2 = tpl2.match(/<div[^>]*>/g) || []
+  eq('9n 第二页模板无裸 div', divs2.filter((d) => !/class=/.test(d)).length, 0)
+  ok('9o manifest 含第二页路由与 router 声明', !!(man.router && man.router.pages && man.router.pages['pages/tools2']) && JSON.stringify(man.features).indexOf('system.router') >= 0)
+  ok('9p 主页不再含四个新工具视图（已拆页）', ['rtri', 'law', 'perm', 'seq'].every((v) => ux.indexOf("view === '" + v + "'") < 0))
+  ok('9q 跨页导航必须 replace（push 会双页驻留 OOM）', ux.indexOf("router.replace({ uri: '/pages/tools2', params: { tool: id } })") >= 0 && ux.indexOf('router.push') < 0)
+}
+
+// §10 无 BigInt 运行时模拟（手环 QuickJS 无 BigInt、只有 typeof 守卫兜底）：
+// 屏蔽全局 BigInt 后以新模块实例重跑关键路径，断言降级行为与有 BigInt 时一致。
+// triArea 的精确形原先全靠 BigInt 路径，无 BigInt 时只剩 ≈ 小数（模拟器实测
+// 3/4/5 只显示「≈ 6」）——已补纯 Number 兜底（中间量超安全整数才放弃）。
+{
+  const savedBigInt = globalThis.BigInt
+  globalThis.BigInt = undefined
+  try {
+    const nb = (await import('../src/common/calc.js?nobigint=1')).default
+    eq('10a 无 BigInt triArea(3,4,5) 精确形', JSON.stringify(nb.triArea(3, 4, 5).exact), JSON.stringify({ cn: 6, cd: 1, rad: 1 }))
+    eq('10b 无 BigInt triArea(2,3,4) 精确形', JSON.stringify(nb.triArea(2, 3, 4).exact), JSON.stringify({ cn: 3, cd: 4, rad: 15 }))
+    eq('10c 无 BigInt triArea(1,1,1) 精确形', JSON.stringify(nb.triArea(1, 1, 1).exact), JSON.stringify({ cn: 1, cd: 4, rad: 3 }))
+    eq('10d 无 BigInt triArea(0.3,0.4,0.5) 精确形', JSON.stringify(nb.triArea(0.3, 0.4, 0.5).exact), JSON.stringify({ cn: 3, cd: 50, rad: 1 }))
+    eq('10e 无 BigInt triArea 退化判定', nb.triArea(1, 2, 3).type, 'degenerate')
+    eq('10f 无 BigInt triArea 构不成判定', nb.triArea(1, 2, 4).error, '不能构成三角形')
+    const q = nb.solveQuad(1, -3, 2)
+    ok('10g 无 BigInt 二次方程根 2/1', q.type === 'two' && ((q.x1 === 2 && q.x2 === 1) || (q.x1 === 1 && q.x2 === 2)), JSON.stringify(q))
+    const s = nb.solveSystem(1, 1, 3, 1, -1, 1)
+    ok('10h 无 BigInt 方程组解 2/1', Math.abs(s.x - 2) < 1e-9 && Math.abs(s.y - 1) < 1e-9, JSON.stringify(s))
+    eq('10i 无 BigInt 求值 2+3', nb.evaluate('2+3'), 5)
+    eq('10j 有/无 BigInt triArea 一致', JSON.stringify(calc.triArea(2, 3, 4).exact), JSON.stringify(nb.triArea(2, 3, 4).exact))
+  } finally {
+    globalThis.BigInt = savedBigInt
+  }
+}
+
+// §11 微信定案四个新工具（2026-11-15 用户经微信拍板、主聊天执行）：解直角
+// 三角形（初中清单第 4）、正弦/余弦定理、排列组合、等差/等比数列（高中）。
+// 引擎在 calc2.js（solveRightTri / solveTriangle / permComb / seqSolve；
+// 只被第二页引用、主页不加载，见 §9 拆页守卫），页面在 pages/tools2。
+// 全程普通 Number、无 BigInt 依赖；页面只显示「解出来的量」，已知量在格子里。
+{
+  const rt = calc2.solveRightTri({ a: 3, b: 4, c: null, A: null, B: null })
+  ok('11a 直角 3/4 → c=5', rt.type === 'ok' && rt.c === 5)
+  ok('11b 直角 3/4 → 角 36.87/53.13', Math.abs(rt.A - 36.86989764584402) < 1e-9 && Math.abs(rt.B - 53.13010235415598) < 1e-9)
+  const rt2 = calc2.solveRightTri({ a: null, b: null, c: 5, A: 30, B: null })
+  ok('11c 直角 c=5 A=30 → a=2.5 b≈4.3301', Math.abs(rt2.a - 2.5) < 1e-9 && Math.abs(rt2.b - 4.330127018922194) < 1e-9)
+  eq('11d 直角斜边不长于直角边报错', calc2.solveRightTri({ a: 5, b: null, c: 4, A: null, B: null }).error, '斜边 c 要比直角边长')
+  eq('11e 直角只有角报错', calc2.solveRightTri({ a: null, b: null, c: null, A: 30, B: 60 }).error, '至少要填一条边')
+  eq('11f 直角量对不上报错', calc2.solveRightTri({ a: 3, b: 4, c: null, A: 50, B: null }).error, '填的量对不上')
+  eq('11g 直角不符合勾股报错', calc2.solveRightTri({ a: 3, b: 4, c: 6, A: null, B: null }).error, '三边不符合勾股定理')
+
+  const pc = calc2.permComb(5, 2)
+  ok('11h 排列组合 5,2 → 20/10 精确', pc.A === 20 && pc.C === 10 && pc.aExact && pc.cExact)
+  ok('11i 排列组合 r=0 → 1/1', calc2.permComb(10, 0).A === 1 && calc2.permComb(10, 0).C === 1)
+  eq('11j 排列组合 r>n 报错', calc2.permComb(3, 5).error, 'r 不能大于 n')
+  ok('11k 排列组合 C(60,30) 超安全整数标约数', calc2.permComb(60, 30).cExact === false)
+
+  const ap = calc2.seqSolve('ap', 1, 2, 10)
+  ok('11l 等差 1,2,10 → 19/100', ap.an === 19 && ap.Sn === 100)
+  const gp = calc2.seqSolve('gp', 1, 2, 10)
+  ok('11m 等比 1,2,10 → 512/1023', gp.an === 512 && gp.Sn === 1023)
+  ok('11n 等比 q=1 → Sn=n·a1', calc2.seqSolve('gp', 3, 1, 5).Sn === 15)
+  ok('11o 等比分数 1,1/2,10 → an=1/512', Math.abs(calc2.seqSolve('gp', 1, 0.5, 10).an - 0.001953125) < 1e-15)
+
+  const sss = calc2.solveTriangle({ a: 3, b: 4, c: 5, A: null, B: null, C: null })
+  ok('11p 正余弦 SSS → C=90 面积 6', sss.solutions.length === 1 && Math.abs(sss.solutions[0].C - 90) < 1e-9 && Math.abs(sss.solutions[0].area - 6) < 1e-9)
+  const sas = calc2.solveTriangle({ a: 3, b: null, c: 4, A: null, B: 90, C: null })
+  ok('11q 正余弦 SAS → b=5', Math.abs(sas.solutions[0].b - 5) < 1e-9)
+  const asa = calc2.solveTriangle({ a: null, b: null, c: 5, A: 45, B: 45, C: null })
+  ok('11r 正余弦 ASA → C=90 a=b', Math.abs(asa.solutions[0].C - 90) < 1e-9 && Math.abs(asa.solutions[0].a - asa.solutions[0].b) < 1e-9)
+  eq('11s 正余弦 SSA 两解', calc2.solveTriangle({ a: 6, b: 10, c: null, A: 30, B: null, C: null }).solutions.length, 2)
+  eq('11t 正余弦 SSA 无解报错', calc2.solveTriangle({ a: 4, b: 10, c: null, A: 30, B: null, C: null }).error, '这样的三角形不存在')
+  eq('11u 正余弦 SSA 直角唯一解（防浮点裂双解）', calc2.solveTriangle({ a: 5, b: 10, c: null, A: 30, B: null, C: null }).solutions.length, 1)
+  eq('11v 正余弦多填对不上报错', calc2.solveTriangle({ a: 3, b: 4, c: 5, A: null, B: null, C: 80 }).error, '填的量对不上')
+  eq('11w 正余弦三边构不成报错', calc2.solveTriangle({ a: 1, b: 2, c: 4, A: null, B: null, C: null }).error, '三边不能构成三角形')
+
+  const inst = makeInst2()
+  eq('11x 页面默认直角结果', JSON.stringify(inst.rtLines), JSON.stringify(['c = 5', 'A ≈ 36.87° · B ≈ 53.13°']))
+  eq('11y 页面默认正余弦结果', JSON.stringify(inst.lwLines), JSON.stringify(['A ≈ 36.87° · B ≈ 53.13° · C = 90°', '面积 = 6']))
+  eq('11z 页面默认排列组合结果', JSON.stringify(inst.pmLines), JSON.stringify(['A(5,2) = 20', 'C(5,2) = 10']))
+  eq('11aa 页面默认等差结果', JSON.stringify(inst.sqLines), JSON.stringify(['第 10 项 = 19', '前 10 项和 = 100']))
+  inst.sqKind = 'gp'; inst.sqSolve()
+  eq('11ab 页面等比结果', JSON.stringify(inst.sqLines), JSON.stringify(['第 10 项 = 512', '前 10 项和 = 1023']))
+  inst.rta = '1'; inst.rtb = '1'; inst.rtSolve()
+  ok('11ac 直角 1/1 → c 根式行', inst.rtLines[0].indexOf('c = √2') === 0, JSON.stringify(inst.rtLines))
+  ok('11ad 第二页模板含四个新视图', ['rtri', 'law', 'perm', 'seq'].every((v) => ux2.indexOf("view === '" + v + "'") >= 0))
+}
+
+// ---------- §12 1.6.0 发布前全量自查修复（2026-11-15 用户令：跟 DeepSeek 一样
+// 仔细、一次性找完所有 bug，输出/输入/界面全查） ----------
+// 审查方法：独立审查员只读通读 calc.js（876 行）与 calc2.js（163 行）后用 node
+// 直接 import 运行验证，报 16 条 B1–B16（中高 2、中 5、低中 1、低 8），每条带
+// 复现命令；我用探针逐项复跑，16 条全部属实。另纠正审查员两处错误：B3a 的真
+// 判别式是 3.9968e-15（他写 4.44e-16）；B9 中他写的 2^50% 期望值是他自己的
+// 算术笔误，正确口径是先算幂再取 % 即 /100 → 1.125899906842624e13。
+// 其中 B3/B12 定案不改（见 12c/12l 守恒断言与 BUGLOG），B10 只修 0^-1 的
+// div0、溢出返回 Infinity 为既定口径（见 12j 注记）。
+{
+  const EV = (s) => { try { return calc.evaluate(s) } catch (e) { return 'ERR:' + e.message } }
+  // B1：三个角全给时校验内角和
+  eq('12a 三角和 190° 报错', calc2.solveTriangle({ a: 5, A: 30, B: 60, C: 100 }).error, '三个角加起来要等于 180°')
+  eq('12a 三角和 179° 报错', calc2.solveTriangle({ a: 5, A: 30, B: 60, C: 89 }).error, '三个角加起来要等于 180°')
+  eq('12a 三角和 180° 给解', calc2.solveTriangle({ a: 5, A: 30, B: 60, C: 90 }).type, 'ok')
+  eq('12a 两角和 ≥180° 旧报错不变', calc2.solveTriangle({ a: 5, A: 100, B: 90 }).error, '两个角加起来要小于 180°')
+  // B2：小数边退化（0.1+0.2=0.3）
+  eq('12b 0.1/0.2/0.3 退化', calc2.solveTriangle({ a: 0.1, b: 0.2, c: 0.3 }).error, '三边退化成一条直线')
+  eq('12b 整数 1/2/3 退化不变', calc2.solveTriangle({ a: 1, b: 2, c: 3 }).error, '三边退化成一条直线')
+  eq('12b 3/4/5 正常', calc2.solveTriangle({ a: 3, b: 4, c: 5 }).type, 'ok')
+  // B3：1e-14 模糊带是 1.5.20 N-01 定版政策，不收紧（15 位小数构造的边界例在
+  // 初高中不存在；容差是为短小数输入的二进制表示噪声服务的）。守恒：
+  eq('12c 模糊带内侧仍判重根', calc.solveQuad(1, 2, 1 + 1e-15).type, 'one')
+  eq('12c 模糊带外侧仍判两根', calc.solveQuad(1, 2, 1 - 1e-13).type, 'two')
+  eq('12c 课本题假重根仍判重根', calc.solveQuad(0.1, 0.7, 1.225).type, 'one')
+  eq('12c 方程组近平行仍判无解', calc.solveSystem(1, 1, 2, 1, 1 + 1e-15, 3).type, 'none')
+  // B4：两根恒按 x1<x2 升序（教材惯例）
+  eq('12d x²−5x+6 两根升序', JSON.stringify([calc.solveQuad(1, -5, 6).x1, calc.solveQuad(1, -5, 6).x2]), JSON.stringify([2, 3]))
+  eq('12d x²+5x+6 两根升序', JSON.stringify([calc.solveQuad(1, 5, 6).x1, calc.solveQuad(1, 5, 6).x2]), JSON.stringify([-3, -2]))
+  {
+    const inst = makeInst()
+    inst.qa = '1'; inst.qb = '-5'; inst.qc = '6'; inst.quadSolve()
+    eq('12d 二次页两根升序', JSON.stringify(inst.qLines), JSON.stringify(['判别式 Δ = 1 > 0', 'x1 = 2', 'x2 = 3']))
+  }
+  // B5：阶乘 ≥1e21 给约数，不再报错
+  approx('12e 23! 给约数', EV('23!'), 2.585201673888498e22, 1e-12)
+  approx('12e 25! 给约数', EV('25!'), 1.5511210043330986e25, 1e-12)
+  eq('12e 22! 仍精确', EV('22!'), 1.1240007277776077e21)
+  eq('12e 171! 仍溢出', EV('171!'), 'ERR:overflow')
+  approx('12e 100! 给约数', EV('100!'), 9.33262154439441e157, 1e-12)
+  // B6：超大边三角形面积（自查前已修：Heron 中间量缩放路径；只钉行为）
+  approx('12f 1e100 等边面积', calc.triArea(1e100, 1e100, 1e100).area, 4.330127018922193e199, 1e-12)
+  approx('12f 1e90 等边面积', calc.triArea(1e90, 1e90, 1e90).area, 4.330127018922193e179, 1e-12)
+  eq('12f 3/4/5 面积仍 6', calc.triArea(3, 4, 5).area, 6)
+  // B7：超大边 SSS 不再返回 NaN 解
+  eq('12g 1e200 等边报错', calc2.solveTriangle({ a: 1e200, b: 1e200, c: 1e200 }).error, '数字太大，超出精确计算范围')
+  eq('12g 1e150 等边给 60°', calc2.solveTriangle({ a: 1e150, b: 1e150, c: 1e150 }).solutions[0].A, 60.00000000000001)
+  // B8：负底分数指数取实根
+  eq('12h (-8)^(1/3) = −2', EV('(-8)^(1/3)'), -2)
+  eq('12h (-27)^(1/3) = −3', EV('(-27)^(1/3)'), -3)
+  approx('12h (-8)^(2/3) = 4', EV('(-8)^(2/3)'), 4, 1e-12)
+  eq('12h (-8)^(1/2) 仍定义域错', EV('(-8)^(1/2)'), 'ERR:domain')
+  // B9：% 不绑进指数
+  eq('12i 10^2% = 1', EV('10^2%'), 1)
+  approx('12i 2^50% = 2^50/100', EV('2^50%'), 1.125899906842624e13, 1e-12)
+  eq('12i 200+10% 不变', EV('200+10%'), 220)
+  eq('12i 200−10% 不变', EV('200-10%'), 180)
+  eq('12i 50%+50% 不变', EV('50%+50%'), 0.75)
+  // B10：溢出返回 Infinity、页面显示「溢出」为既定口径（L1 钉死 1e999999999
+  // → Infinity；1.5.18 7d/7e 钉死 FD(E('10^309'))='溢出'），不改抛错；
+  // 只修 0^-1：它是 1/0 的另一种写法，应抛 div0、页面显示「不能 ÷ 0」。
+  eq('12j 0^-1 抛 div0', EV('0^-1'), 'ERR:div0')
+  eq('12j 10^400 返回 Infinity', EV('10^400'), Infinity)
+  eq('12j 1e400 返回 Infinity', EV('1e400'), Infinity)
+  eq('12j 1e999999999 返回 Infinity', EV('1e999999999'), Infinity)
+  eq('12j 1e308×10 返回 Infinity', EV('1e308×10'), Infinity)
+  eq('12j Infinity 显示「溢出」', FD(Infinity), '溢出')
+  {
+    const i = makeInst()
+    i.expr = '0^-1'; i.refreshCalc()
+    eq('12j 页面 0^-1 显示「不能 ÷ 0」', i.resDisp, '不能 ÷ 0')
+    ok('12j 页面 0^-1 previewOk=false', i.previewOk === false)
+    i.expr = '10^400'; i.refreshCalc()
+    eq('12j 页面 10^400 显示「溢出」', i.resDisp, '溢出')
+  }
+  // B11：排列组合/数列溢出返回 error，不再给 Infinity
+  eq('12k A(200,200) 溢出报错', calc2.permComb(200, 200).error, '数字太大，超出精确计算范围')
+  eq('12k A(170,170) 正常', calc2.permComb(170, 170).type, 'ok')
+  eq('12k 等比 400 项溢出报错', calc2.seqSolve('gp', 1, 10, 400).error, '数字太大，超出精确计算范围')
+  eq('12k A(5,2)=20/C(5,2)=10 不变', JSON.stringify([calc2.permComb(5, 2).A, calc2.permComb(5, 2).C]), JSON.stringify([20, 10]))
+  // B12：引擎层不支持隐含乘法是已知限制，不改——全部用户输入路径都自动补 ×
+  // （主键盘 appendTok、方程键盘 eqin、系数 coeffSrc），无用户可达路径。
+  eq('12l 引擎 2π 仍报错（已知限制）', EV('2π'), 'ERR:trailing')
+  eq('12l 引擎 2(3) 仍报错（已知限制）', EV('2(3)'), 'ERR:trailing')
+  // B13：sqrt 单词
+  eq('12m sqrt(4) = 2', EV('sqrt(4)'), 2)
+  // B14：进制转换支持负数
+  eq('12n -101 二进制转十进制', calc.baseConvert('-101', 2).dec, '-5')
+  eq('12n -101 二进制转八进制', calc.baseConvert('-101', 2).oct, '-5')
+  eq('12n 101 二进制不变', calc.baseConvert('101', 2).dec, '5')
+  // B15：cleanNum 不再改写 15 位内精确值
+  eq('12o 1234567890123.5 显示完整', FD(1234567890123.5), '1,234,567,890,123.5')
+  eq('12o 9999999999999.5 显示完整', FD(9999999999999.5), '9,999,999,999,999.5')
+  eq('12o 1/3 仍截 12 位', FD(1 / 3), '0.333333333333')
+  // B16：非法温度 id 返回 NaN
+  ok('12p 非法 fromId 返回 NaN', Number.isNaN(calc.convertUnit(3, 'x', 'c', 100)))
+  ok('12p 非法 toId 返回 NaN', Number.isNaN(calc.convertUnit(3, 'c', 'x', 100)))
+  eq('12p 100°C→°F 不变', calc.convertUnit(3, 'c', 'f', 100), 212)
+  // E1：主页结果行 8 位数截断（模拟器实测：12345678 只显示「= 12,345,」，678 被截）
+  // 根因 fitResPx 的 50px 档给了 12 字符；50px 下每字符约 25~26px，12 字约 304px 超过可用宽。
+  {
+    const i = makeInst()
+    i.expr = '12345678'; i.refreshCalc()
+    eq('12s 8 位数结果完整', i.resDisp, '= 12,345,678')
+    eq('12s 8 位数结果降到 38px', i.resPx, 38)
+    i.expr = '1234567'; i.refreshCalc()
+    eq('12s 7 位数结果完整', i.resDisp, '= 1,234,567')
+    eq('12s 7 位数结果仍 50px', i.resPx, 50)
+    i.expr = '123456'; i.refreshCalc()
+    eq('12s 6 位数结果完整', i.resDisp, '= 123,456')
+    eq('12s 6 位数结果仍 50px', i.resPx, 50)
+    i.expr = '123456789012'; i.refreshCalc()
+    eq('12s 12 位数结果完整', i.resDisp, '= 123,456,789,012')
+    eq('12s 12 位数结果 30px', i.resPx, 30)
+  }
+  if (buglog === null) console.log('SKIP 12r BUGLOG 含自查节（[审查仓适配] BUGLOG.md 不在公开仓）')
+  else ok('12r BUGLOG 含自查节', buglog.indexOf('发布前全量自查') >= 0)
+}
+
+// ---------- §13 C/D 轮自查修复（2026-11-15；接 §12 的 B 轮之后，两路只读审计
+// C 输入层 7 条、D 输出显示 11 条，我用探针逐项复跑全部属实后修；修复验证探针
+// tests/cd-verify.mjs 69 条全过。另纠正 D 报告一处：F7 的第二个例子
+// 1e-16×1.2345678901234567 与 sin 尾巴无法区分（相对误差同为 2.x e-12 量级），
+// 按 1.4.17 定版仍归零、不救；修的是商 1e-15÷8.1（见 13n 注记）。
+// F4 的 9999999999999.5：toPrecision(13) 是进位到 1e13 而非截断，
+// 「9,999,999,999,999」不可达，定案留精确串（见 13k 注记）。 ----------
+{
+  // C1：小数点后按 π/e/函数键自动补 ×（2.π 不再卡死局）
+  {
+    const i = makeInst()
+    i.pressKey('2'); i.pressKey('.'); i.pressKey('π')
+    eq('13a 2.π → 2.×π', i.expr, '2.×π')
+    eq('13a 2.×π 可算', i.resDisp, '≈ 6.28318530718')
+    const j = makeInst()
+    j.pressKey('2'); j.pressKey('.'); j.pressKey('sin(')
+    eq('13a 2.sin( → 2.×sin(', j.expr, '2.×sin(')
+    const k = makeInst()
+    k.pressKey('2'); k.pressKey('.'); k.pressKey('√(')
+    eq('13a 2.√( → 2.×√(', k.expr, '2.×√(')
+    const e = makeInst()
+    e.eqFocus = 1; e.eqPad('2'); e.eqPad('.'); e.eqPad('π')
+    eq('13a 方程页 2.π → 2.×π', e.eqExpr, '2.×π')
+    const e2 = makeInst()
+    e2.eqFocus = 1; e2.eqPad('2'); e2.eqPad('.'); e2.eqPad('(')
+    eq('13a 方程页 2.( → 2.×(', e2.eqExpr, '2.×(')
+  }
+  // C2：方程页 . 在 %/° 后补 ×0.，与主键盘一致
+  {
+    const e = makeInst()
+    e.eqFocus = 1
+    for (const v of ['5', '0', '%', '.', '5']) e.eqPad(v)
+    eq('13b 方程页 50%.5 → 50%×0.5', e.eqExpr, '50%×0.5')
+    const e2 = makeInst()
+    e2.eqFocus = 1
+    for (const v of ['9', '0', '°', '.']) e2.eqPad(v)
+    eq('13b 方程页 90°. → 90°×0.', e2.eqExpr, '90°×0.')
+  }
+  // C3：方程页 % 可连按，与主键盘一致
+  {
+    const e = makeInst()
+    e.eqFocus = 1
+    for (const v of ['5', '0', '%', '%']) e.eqPad(v)
+    eq('13c 方程页 50%%', e.eqExpr, '50%%')
+  }
+  // C4：各键盘长度上限按追加后总长查
+  {
+    const L20 = '12345678901234567890'
+    eq('13d editCoeff 20 字 + . 拦', F.editCoeff(L20, '.'), L20)
+    eq('13d editCoeff 20 字 + / 拦', F.editCoeff(L20, '/'), L20)
+    eq('13d editCoeff 20 字 + ± 拦', F.editCoeff(L20, 'neg'), L20)
+    eq('13d editCoeff 20 字 − ± 解', F.editCoeff('-' + L20.slice(0, 19), 'neg'), L20.slice(0, 19))
+    eq('13d editCoeff 19 字 + √ 拦（一次加 2 字）', F.editCoeff('1234567890123456789', 'sqrt'), '1234567890123456789')
+    eq('13d editCoeff 18 字 + √ 放', F.editCoeff('123456789012345678', 'sqrt'), '123456789012345678√(')
+    const i = makeInst()
+    i.ga = '12345678'; i.gField = 'a'; i.gcdPad('00')
+    eq('13d 公约数格 8 位 + 00 拦', i.ga, '12345678')
+    i.ga = '1234567'; i.gcdPad('00')
+    eq('13d 公约数格 7 位 + 00 放', i.ga, '123456700')
+    const u = makeInst()
+    u.unitVal = '123456789012'; u.unitPad('.')
+    eq('13d 单位格 12 字 + . 拦', u.unitVal, '123456789012')
+    u.unitVal = '12345678901'; u.unitPad('00')
+    eq('13d 单位格 11 字 + 00 拦', u.unitVal, '12345678901')
+  }
+  // C5：主键盘 60 字上限，Ans 与 ± 也拦不住（解包变短不拦，C 仍可用）
+  {
+    const i = makeInst()
+    i.expr = '1'.repeat(60); i.lastAns = '7'; i.ansFull = '7'; i.pressKey('ans')
+    eq('13e 60 字 + Ans 拦', i.expr, '1'.repeat(60))
+    const j = makeInst()
+    j.expr = '1'.repeat(60); j.pressKey('neg')
+    eq('13e 60 字 + ± 拦', j.expr, '1'.repeat(60))
+    const k = makeInst()
+    k.expr = '−(' + '1'.repeat(58) + ')'; k.pressKey('neg')
+    eq('13e 60 字包裹 + ± 解包放', k.expr, '1'.repeat(58))
+    const m = makeInst()
+    m.expr = '1'.repeat(60); m.pressKey('C')
+    eq('13e 60 字 + C 仍可用', m.expr, '')
+  }
+  // C6：° 连按不追加（90°° 不再默默算两次角度换算）；²² 与 %% 口径不动
+  {
+    const i = makeInst()
+    i.pressKey('9'); i.pressKey('0'); i.pressKey('°'); i.pressKey('°')
+    eq('13f 90°° 只留一个 °', i.expr, '90°')
+    const j = makeInst()
+    j.pressKey('2'); j.pressKey('²'); j.pressKey('²')
+    eq('13f 2²² 不动', j.expr, '2²²')
+    const k = makeInst()
+    k.pressKey('5'); k.pressKey('0'); k.pressKey('%'); k.pressKey('%')
+    eq('13f 50%% 不动', k.expr, '50%%')
+  }
+  // C7：解锁成功直达被拦的目标；无目标时停在解锁页；输错可重试、目标保留
+  {
+    const defK = loadPage(true)
+    const mkK = () => {
+      const inst = {}
+      Object.assign(inst, JSON.parse(JSON.stringify(defK.data)))
+      for (const k of Object.keys(defK)) if (typeof defK[k] === 'function') inst[k] = defK[k].bind(inst)
+      inst.onInit()
+      return inst
+    }
+    const i = mkK()
+    i.unlocked = false; i.deviceId = '0123456789abcdeffedcba9876543210'
+    i.openSolver('quad')
+    eq('13g 未解锁点解方程进解锁页', i.view, 'unlock')
+    eq('13g gatePaid 记下目标', i.unlockTarget, 'solver:quad')
+    i.keyInput = '1234567890'; i.confirmUnlock()
+    eq('13g 解锁后直达 quad', i.view, 'quad')
+    const j = mkK()
+    j.unlocked = false; j.deviceId = '0123456789abcdeffedcba9876543210'
+    j.goTools()
+    j.keyInput = '1234567890'; j.confirmUnlock()
+    eq('13g 解锁后直达 tools', j.view, 'tools')
+    const m = mkK()
+    m.unlocked = false; m.deviceId = '0123456789abcdeffedcba9876543210'
+    m.goUnlock()
+    eq('13g 手动进解锁页无目标', m.unlockTarget, null)
+    m.keyInput = '1234567890'; m.confirmUnlock()
+    eq('13g 无目标解锁停在解锁页', m.view, 'unlock')
+    const n = makeInst()
+    n.unlocked = false; n.deviceId = '0123456789abcdeffedcba9876543210'
+    n.openSolver('sys')
+    n.keyInput = '0000000000'; n.confirmUnlock()
+    eq('13g 输错密钥仍在解锁页', n.view, 'unlock')
+    eq('13g 输错后目标保留可重试', n.unlockTarget, 'solver:sys')
+  }
+  // F1：绘图交点行按 x1<x2 升序，与二次方程页一致
+  {
+    const i = makeInst()
+    i.qa = '1'; i.qb = '0'; i.qc = '-2'; i.openPlot('quad')
+    ok('13h 图象交点行升序', i.plotLines.join('|').indexOf('与 x 轴交点 x = −√2、√2 ≈ 1.41') >= 0)
+  }
+  // F2：系数不精确时根式本身带 ≈，两根都没有小数就回落纯小数行；
+  // 精确系数的裸根式行（1.5.4 钉死）不受影响。
+  {
+    const i = makeInst()
+    i.qa = '0.3333333333'; i.qb = '0'; i.qc = '-2'; i.openPlot('quad')
+    ok('13i 不精确系数交点行回落纯小数', i.plotLines.join('|').indexOf('与 x 轴交点 x = −2.4495、2.4495') >= 0)
+    ok('13i 不精确系数行无裸 ≈√6', i.plotLines.join('|').indexOf('≈√6') < 0)
+  }
+  // F3：精确分数在大数时不再误标 ≈（fracIsExact 先做精确双精度比较）
+  eq('13j fracIsExact(1234567890123.5 → 2469135780247/2)', calc.fracIsExact(1234567890123.5, calc.toFraction(1234567890123.5)), true)
+  eq('13j fracIsExact(0.3333333334 → 1/3) 仍 false（1.5.12 钉死）', calc.fracIsExact(0.3333333334, calc.toFraction(0.3333333334)), false)
+  {
+    const i = makeInst()
+    i.expr = '1234567890123.5'; i.refreshCalc()
+    i.fracOn = true; i.refreshCalc()
+    eq('13j 大数分数用 =', i.resDisp, '= 2469135780247/2')
+  }
+  // F4：fitResStr 降 p 不再缩短就停，保住最精确形。
+  // 注记：9999999999999.5 的 toPrecision(13) 是进位到 1e13 而非截断，
+  // 「9,999,999,999,999」不可达；进位形只比精确串短 1 字且看着像整数，
+  // 定案留精确串（= 号诚实）。
+  {
+    const i = makeInst()
+    i.expr = '1234567890123.5'; i.refreshCalc()
+    eq('13k 大数主行 13 位近似', i.resDisp, '≈ 1,234,567,890,124')
+    const j = makeInst()
+    j.expr = '9999999999999.5'; j.refreshCalc()
+    eq('13k 大数 2 主行留精确串', j.resDisp, '= 9,999,999,999,999.5')
+    const k = makeInst()
+    k.expr = '1÷3'; k.refreshCalc()
+    eq('13k 1/3 仍 9 位小数', k.resDisp, '≈ 0.333333333')
+  }
+  // F5：tools2 分数与小数之间的连接号按是否精确选 = / ≈
+  {
+    const s = makeInst2()
+    s.sqa = '1'; s.sqx = '1/2'; s.sqn = '10'; s.sqKind = 'gp'; s.sqSolve()
+    eq('13l 数列等比行用 =', JSON.stringify(s.sqLines), JSON.stringify(['第 10 项 = 1/512 = 0.001953125', '前 10 项和 = 1023/512 = 1.998046875']))
+    const r = makeInst2()
+    r.rta = ''; r.rtb = ''; r.rtc = '5'; r.rtA = '30'; r.rtB = ''; r.rtSolve()
+    ok('13l 直角三角形 a = 5/2 = 2.5', r.rtLines.join('|').indexOf('a = 5/2 = 2.5') >= 0)
+  }
+  // F6：tools2 大整数不再漏原始 e 记法，≥1e21 走 12 位课本式 ×10 上标
+  {
+    const s = makeInst2()
+    s.sqa = '1'; s.sqx = '3'; s.sqn = '100'; s.sqKind = 'gp'; s.sqSolve()
+    eq('13m 等比 100 项无 e 记法', JSON.stringify(s.sqLines), JSON.stringify(['第 100 项 = 1.71792506911×10⁴⁷', '前 100 项和 = 2.57688760366×10⁴⁷']))
+    const l = makeInst2()
+    l.lwa = '1e100'; l.lwb = '1e100'; l.lwc = '1e100'; l.lwSolve()
+    ok('13m SSS 1e100 面积无 e 记法', l.lwLines.join('|').indexOf('面积 = 4.33012701892×10¹⁹⁹') >= 0)
+  }
+  // F7：极小真商不再显示「≈ 0」——isTinyQuotient 判别放宽到 4 ulp。
+  // 注记：1e-15÷8.1 的 v×81 与 1e-14 只差约 1 ulp，可与尾巴严格区分；
+  // 1e-16×1.2345678901234567 这类真积与 1e-14/81 在第 9 位就不同
+  //（相对差 9e-9），与 sin 尾巴（2.2e-12）无法区分，按 1.4.17 定版仍归零。
+  // cleanNum 一行不动；尾巴守卫（1.5.18 3a/3b/3c/3d、1.5.19 3d）全过。
+  {
+    const i = makeInst()
+    i.expr = '1e-15÷8.1'; i.refreshCalc()
+    eq('13n 1e-15÷8.1 显示科学计数', i.resDisp, '≈ 1.234567901×10⁻¹⁶')
+    eq('13n sin(180°) 尾巴仍 0', FD(calc.evaluate('sin(180)')), '0')
+    eq('13n cos(90°) 尾巴仍 0', FD(calc.evaluate('cos(90)')), '0')
+    eq('13n 裸 sin(π) 尾巴仍 0', FD(Math.sin(Math.PI)), '0')
+    eq('13n √2×1e-17 仍 0', FD(Math.SQRT2 * 1e-17), '0')
+    eq('13n (1/3)×1e-15 仍救援', FD((1 / 3) * 1e-15), '3.33333333333×10⁻¹⁶')
+    eq('13n 1e-16÷8.1 不变', FD(1e-16 / 8.1), '1.23456790123×10⁻¹⁷')
+  }
+  // F8：公约数页 lcm 被截断时连接号用 ≈（与主页同口径）
+  {
+    const i = makeInst()
+    i.ga = '94000000'; i.gb = '93999999'; i.gcdSolve()
+    eq('13o lcm 截断用 ≈', JSON.stringify(i.gLines), JSON.stringify(['最大公约数 = 1', '最小公倍数 ≈ 8.83599991×10¹⁵']))
+    const j = makeInst()
+    j.ga = '12'; j.gb = '18'; j.gcdSolve()
+    eq('13o 小 lcm 仍用 =', JSON.stringify(j.gLines), JSON.stringify(['最大公约数 = 6', '最小公倍数 = 36']))
+  }
+  // F9：排列组合行超宽改 10 位 ×10 上标，不再被省略号截掉末尾数字
+  {
+    const p = makeInst2()
+    p.pmn = '30'; p.pmr = '15'; p.pmSolve()
+    eq('13p A(30,15) 缩短', p.pmLines[0], 'A(30,15) ≈ 2.028432049×10²⁰')
+    ok('13p A 行 ≤30 字', p.pmLines[0].length <= 30)
+    eq('13p C(30,15) 不动', p.pmLines[1], 'C(30,15) = 155117520')
+    const q = makeInst2()
+    q.pmn = '5'; q.pmr = '2'; q.pmSolve()
+    eq('13p A(5,2) 不动', JSON.stringify(q.pmLines), JSON.stringify(['A(5,2) = 20', 'C(5,2) = 10']))
+  }
+  // F10：根号化简页小数 6 位 → 12 位，与全应用口径一致
+  {
+    const i = makeInst()
+    i.sqrtN = '72'; i.sqrtSolve()
+    eq('13q √72 12 位', JSON.stringify(i.sqrtLines), JSON.stringify(['√72 = 6√2', '≈ 8.48528137424']))
+    const j = makeInst()
+    j.sqrtN = '2000000'; j.sqrtSolve()
+    eq('13q √2000000 12 位', JSON.stringify(j.sqrtLines), JSON.stringify(['√2000000 = 1000√2', '≈ 1,414.21356237']))
+  }
+  // F11：系数栏整串科学计数法按科学计数法读（1e21 → 10²¹）；
+  // '2e'（2×e）、'e2'（e×2）的欧拉读法有 §1d 钉死，原样不动。
+  eq('13r parseCoeff 1e21', F.parseCoeff('1e21'), 1e21)
+  eq('13r parseCoeff 1.5e3', F.parseCoeff('1.5e3'), 1500)
+  approx('13r parseCoeff 2e 仍 2×e', F.parseCoeff('2e'), 2 * Math.E)
+  approx('13r parseCoeff e2 仍 e×2', F.parseCoeff('e2'), 2 * Math.E)
+  {
+    const i = makeInst()
+    i.cr = '1e21'; i.circSolve()
+    ok('13r 圆半径 1e21 周长走 ×10', i.cLines.join('|').indexOf('×10²¹') >= 0)
+  }
+  if (buglog === null) console.log('SKIP 13z BUGLOG 含 C/D 轮自查节（[审查仓适配] BUGLOG.md 不在公开仓）')
+  else ok('13z BUGLOG 含 C/D 轮自查节', buglog.indexOf('C/D 轮') >= 0)
+}
+
+// §14 跨页导航闪屏修复（2026-11-15 真机反馈）：第二页四工具点开先闪一遍
+// 第二页菜单、返回先闪一遍计算器主页。根因：落地视图靠 storage.get 异步
+// 回调决定，首帧先渲染默认视图（tools2 的 menu / 主页的 calc）。改走路由
+// 参数：参数在页面创建时同步注入、onInit 首帧即直达；存储键保留作兜底。
+// 框架语义模拟：参数在 onInit 之前合并进页面实例，故下列实例先赋值再 onInit。
+{
+  function makeInstP(props) {
+    const inst = {}
+    Object.assign(inst, JSON.parse(JSON.stringify(def.data)))
+    for (const k of Object.keys(def)) if (typeof def[k] === 'function') inst[k] = def[k].bind(inst)
+    Object.assign(inst, props || {})
+    inst.onInit()
+    return inst
+  }
+  function makeInst2P(props) {
+    const inst = {}
+    Object.assign(inst, JSON.parse(JSON.stringify(def2.data)))
+    for (const k of Object.keys(def2)) if (typeof def2[k] === 'function') inst[k] = def2[k].bind(inst)
+    Object.assign(inst, props || {})
+    inst.onInit()
+    return inst
+  }
+  eq('14a 回程参数 backto=tools 首帧直达工具箱', makeInstP({ backto: 'tools' }).view, 'tools')
+  eq('14b 无回程参数仍默认计算器主页', makeInstP({}).view, 'calc')
+  eq('14c 去程参数 tool=law 首帧直达正余弦', makeInst2P({ tool: 'law' }).view, 'law')
+  eq('14d 去程参数 tool=seq 首帧直达数列', makeInst2P({ tool: 'seq' }).view, 'seq')
+  eq('14e 去程参数 tool=rtri 首帧直达解直角三角形', makeInst2P({ tool: 'rtri' }).view, 'rtri')
+  eq('14f 去程参数 tool=perm 首帧直达排列组合', makeInst2P({ tool: 'perm' }).view, 'perm')
+  eq('14g 无去程参数仍默认第二页菜单（兜底）', makeInst2P({}).view, 'menu')
+  ok('14h 回程 replace 带 backto 参数', ux2.indexOf("router.replace({ uri: '/pages/index', params: { backto: 'tools' } })") >= 0)
+  ok('14i 存储兜底仍在（calc_tool_nav / calc_back_to 读写保留）', ux.indexOf("key: 'calc_back_to'") >= 0 && ux2.indexOf("key: 'calc_tool_nav'") >= 0)
+  if (buglog === null) console.log('SKIP 14z BUGLOG 含导航闪屏条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+  else ok('14z BUGLOG 含导航闪屏条目', buglog.indexOf('导航闪屏') >= 0)
+}
+
+console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)
+if (fail) process.exit(1)
