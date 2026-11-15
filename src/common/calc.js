@@ -377,7 +377,16 @@ function formatPlain(v) {
   const c = cleanNum(v)
   if (isNaN(c)) return '错误'
   if (!isFinite(c)) return '溢出'
-  return String(c)
+  let s = String(c)
+  // 2026-11-15 模拟器实查（第二十一轮交付后）：手环 QuickJS 的
+  // Number→String 对个别值（如 2.23607）会吐出尾随一串 0 的非最短
+  // 形式（2.236070000000000000），复数页模长行实测中招。V8 的最短
+  // 形式小数点后永不带尾零，去尾零对两边都安全；科学计数法（含 e）
+  // 不动。
+  if (s.indexOf('.') >= 0 && s.indexOf('e') < 0 && s.indexOf('E') < 0) {
+    s = s.replace(/0+$/, '').replace(/\.$/, '')
+  }
+  return s
 }
 
 function sciStr(s) {

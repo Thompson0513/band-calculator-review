@@ -1375,6 +1375,8 @@ const d23a = calc2.distOf([[5e-324, 0.5], [5e-324, 0.5]])
 ok('23f distOf 次正规期望不下溢：E = 5e-324', d23a.type === 'ok' && d23a.E === 5e-324 && d23a.D === 0, JSON.stringify(d23a))
 const d23b = calc2.distOf([[-1e308, 0.5], [1e308, 0.5]])
 ok('23f distOf 方差真溢出不连坐期望：E = 0、D / sd Infinity', d23b.type === 'ok' && d23b.E === 0 && d23b.D === Infinity && d23b.sd === Infinity, JSON.stringify(d23b))
+const fd1 = calc.formatDisplay(2.23607)
+ok('23g formatDisplay 不带尾零：2.23607 / 2.5 / 100.1 原样', fd1 === '2.23607' && calc.formatDisplay(2.5) === '2.5' && calc.formatDisplay(100.1) === '100.1', fd1)
 if (buglog === null) console.log('SKIP 23z BUGLOG 含第二十一轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
 else ok('23z BUGLOG 含第二十一轮条目', buglog.indexOf('第二十一轮') >= 0)
 
