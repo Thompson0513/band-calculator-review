@@ -425,21 +425,77 @@ function frexp2(x) {
   while (f < 1) { f *= 2; e -= 1 }
   return [f, e]
 }
-// (尾数, 指数) 累加器（第二十一轮）：st = [v, e] 表示 v × 2^e，v 带
-// 符号、|v| ∈ [1, 2)。expAdd 把一项 f × 2^e（f 带符号）对齐指数加进
-// 去再归一化——单向量 / 单复数内部相差数百个数量级的分量统一除以最
-// 大值时会先下溢成 0（第二十一轮 BUG-02/04/05），逐项独立缩放累加
-// 才保得住。归一化的倍增循环加上限防相消到次正规量级时空转。
-function expAdd(st, f, e) {
-  if (f === 0) return
-  if (st[0] === 0) { st[0] = f; st[1] = e }
-  else if (e > st[1]) { st[0] = st[0] * Math.pow(2, st[1] - e) + f; st[1] = e }
-  else { st[0] += f * Math.pow(2, e - st[1]) }
-  let guard = 0
-  while (Math.abs(st[0]) >= 2) { st[0] /= 2; st[1] += 1 }
-  while (st[0] !== 0 && Math.abs(st[0]) < 1 && guard++ < 1200) { st[0] *= 2; st[1] -= 1 }
+// (尾数, 指数) 精确求和（第二十二轮重构）：expPush 收集 f × 2^e 项
+// （内部归一化 |f| ∈ [1, 2)），expSumFE 求和——每项尾数取 53 位整数
+// （|f| ∈ [1,2) 时 f × 2^52 恰为整数双精度），全部对齐到最小指数用
+// BigInt 精确相加、取高 53 位舍入还原。第一版 expAdd 是单一尾数对
+// 齐累加：小量先对齐进大指数被舍掉、随后大正负项抵消，小量再也找
+// 不回来——同一组数据换输入顺序结果就变（第二十二轮复审 BUG-01：
+// 向量点积 [1,1e308,1e308]·[1,1e308,−1e308] 算 0 应为 1；分布列
+// 期望同类）。精确整数求和与顺序无关、抵消不丢量。BigInt 不可用
+// 时退回旧对齐累加（保底，不崩）。
+function expPush(terms, f, e) {
+  if (f === 0 || !isFinite(f)) return
+  const fr = frexp2(Math.abs(f))
+  terms.push([(f < 0 ? -1 : 1) * fr[0], fr[1] + e])
 }
-function expVal(st) { return st[0] === 0 ? 0 : scalbn2(st[0], st[1]) }
+function expSumFE(terms) {
+  const items = []
+  let emin = Infinity
+  for (const t of terms) {
+    if (t[0] === 0) continue
+    items.push(t)
+    if (t[1] < emin) emin = t[1]
+  }
+  if (!items.length) return [0, 0]
+  if (typeof BigInt !== 'function') {
+    const st = [0, 0]
+    const sorted = items.slice().sort(function (p, q) { return q[1] - p[1] })
+    for (const t of sorted) {
+      if (st[0] === 0) { st[0] = t[0]; st[1] = t[1] }
+      else if (t[1] > st[1]) { st[0] = st[0] * Math.pow(2, st[1] - t[1]) + t[0]; st[1] = t[1] }
+      else st[0] += t[0] * Math.pow(2, t[1] - st[1])
+      let g = 0
+      while (Math.abs(st[0]) >= 2) { st[0] /= 2; st[1] += 1 }
+      while (st[0] !== 0 && Math.abs(st[0]) < 1 && g++ < 1200) { st[0] *= 2; st[1] -= 1 }
+    }
+    return st
+  }
+  let S = BigInt(0)
+  for (const t of items) {
+    let m = BigInt(Math.round(Math.abs(t[0]) * 4503599627370496)) // 2^52
+    if (t[0] < 0) m = -m
+    S += m << BigInt(t[1] - emin)
+  }
+  if (S === BigInt(0)) return [0, 0]
+  const neg = S < BigInt(0)
+  const A = neg ? -S : S
+  const bits = A.toString(2).length
+  let shift = bits - 53
+  let top
+  if (shift > 0) {
+    top = A >> BigInt(shift)
+    const rest = A - (top << BigInt(shift))
+    const half = BigInt(1) << BigInt(shift - 1)
+    if (rest > half || (rest === half && (top & BigInt(1)) === BigInt(1))) top += BigInt(1)
+    if (top >= (BigInt(1) << BigInt(53))) { top >>= BigInt(1); shift += 1 }
+  } else {
+    top = A << BigInt(-shift)
+  }
+  const f = Number(top) / 4503599627370496
+  return [neg ? -f : f, emin + shift]
+}
+function expSumVal(terms) {
+  const fe = expSumFE(terms)
+  return fe[0] === 0 ? 0 : scalbn2(fe[0], fe[1])
+}
+// (尾数, 指数) 除以小整数 n（统计平均数 / 方差用）：尾数相除再归一化。
+function divFE(fe, n) {
+  if (fe[0] === 0) return [0, 0]
+  const q = fe[0] / n
+  const fr = frexp2(Math.abs(q))
+  return [(q < 0 ? -1 : 1) * fr[0], fr[1] + fe[1]]
+}
 // 单个乘积的缩放版：两因子各自 frexp 后尾数相乘、指数相加再还原——
 // 乘积本身可表示时精确恢复，不受因子量级悬殊影响（1e308 × 1e-300
 // = 1e8）；乘积真溢出 / 下溢时返回 Infinity / 0（诚实边界）。
@@ -457,10 +513,8 @@ function scalbn2(x, e) {
 
 // 数据统计（2026-11-15 新增，用户点名要方差）：平均数、总体方差 /
 // 标准差（分母 n，初中课内口径）、样本方差 / 标准差（分母 n−1，高中
-// 样本估计口径）。平均数用「移位 + Welford」：先减首项再累加，大数
-// 扎堆（如 100000001、100000002、100000003）时增量都是小量，不相消；
-// 数据跨满量程（|x| > 9e307）时移位差 v−K 本身会溢出，改走半量程差
-// v/2−K/2（减半是精确的二进制缩放）再 Welford，最后还原。
+// 样本估计口径）。平均数用 expSumFE 精确求和除以 n（第二十二轮）：
+// 早先的移位 Welford 在大正负抵消时丢小残余且随顺序变（见函数内注）。
 // 方差改两遍法（2026-11-15 第二十轮复审）：旧 Welford 的 M2 累加器
 // 会先于方差真值溢出——[1e154, −1e154, 0] 的 M2 = 2e308 已存不下，
 // 但总体方差 6.67e307、样本方差 1e308 都存得下，旧实现整页报错。
@@ -472,22 +526,15 @@ function statsOf(xs) {
   if (!Array.isArray(xs) || xs.length === 0) return { error: '先加至少一个数据' }
   for (const v of xs) if (!isFinite(v)) return { error: '有数据不对' }
   const n = xs.length
-  let maxAbs = 0
-  for (const v of xs) maxAbs = Math.max(maxAbs, Math.abs(v))
-  const K = xs[0]
-  // 半量程切换阈值取 MAX/2（第二十一轮复审）：v − K 不溢出的充要条
-  // 件是 2·maxAbs ≤ MAX；旧阈值 9e307 偏高，8.99e307 这类数据相减
-  // 已达 1.798e308 溢出、整页误报。
-  const half = maxAbs > Number.MAX_VALUE / 2
-  let mean = 0, cnt = 0
-  for (const v of xs) {
-    const d = half ? v / 2 - K / 2 : v - K
-    cnt++
-    const delta = d - mean
-    mean += delta / cnt
-  }
-  const meanV = half ? (K / 2 + mean) * 2 : K + mean
-  if (!isFinite(meanV)) return { error: '数字太大，超出精确计算范围' }
+  // 平均数改精确求和后除以 n（第二十二轮复审 BUG-02）：移位 Welford
+  // 在大正负项抵消时会丢小残余且随输入顺序变——[1, 1e308, −1e308]
+  // 实测 mean = 1、换序 mean = 0，真值 1/3。expSumFE 是 BigInt 精确
+  // 求和（与顺序无关），平均值恒在数据范围内、必有限。方差仍用下
+  // 面的 (尾数, 指数) 累加 Σp(x−mean)²——方差项恒非负、无相消问题。
+  const termsM = []
+  for (const v of xs) expPush(termsM, v, 0)
+  const meanFE = divFE(expSumFE(termsM), n)
+  const meanV = scalbn2(meanFE[0], meanFE[1])
   let acc = 0, accE = 0 // Σ(x−meanV)² = acc × 2^accE，acc ∈ [1, 2)
   for (const v of xs) {
     const h = v / 2 - meanV / 2
@@ -555,13 +602,13 @@ function distOf(pairs) {
   // 期望改 (尾数, 指数) 累加（第二十一轮复审）：x·p 单项先乘会把次
   // 正规量级的贡献舍掉（5e-324 × 0.5 = 0），逐项缩放累加才保得住；
   // E 是凸组合、恒可表示，不再有溢出报错路径。
-  const stE = [0, 0]
+  const termsE = []
   for (const pr of pairs) {
     if (pr[1] === 0 || pr[0] === 0) continue // 零概率项无贡献（第二十轮复审）
     const fx = frexp2(Math.abs(pr[0])), fp = frexp2(pr[1])
-    expAdd(stE, (pr[0] < 0 ? -1 : 1) * fx[0] * fp[0], fx[1] + fp[1])
+    expPush(termsE, (pr[0] < 0 ? -1 : 1) * fx[0] * fp[0], fx[1] + fp[1])
   }
-  const E = expVal(stE)
+  const E = expSumVal(termsE)
   let D = 0
   let comp = 0
   let dInf = false
@@ -626,13 +673,13 @@ function vecOf(a, b) {
     dot = 0
     for (let i = 0; i < dim; i++) dot += a[i] * b[i]
   } else if (lost) {
-    const stD = [0, 0]
+    const termsD = []
     for (let i = 0; i < dim; i++) {
       if (a[i] === 0 || b[i] === 0) continue
       const fa = frexp2(Math.abs(a[i])), fb = frexp2(Math.abs(b[i]))
-      expAdd(stD, fa[0] * fb[0] * ((a[i] < 0) !== (b[i] < 0) ? -1 : 1), fa[1] + fb[1])
+      expPush(termsD, fa[0] * fb[0] * ((a[i] < 0) !== (b[i] < 0) ? -1 : 1), fa[1] + fb[1])
     }
-    dot = expVal(stD)
+    dot = expSumVal(termsD)
   } else if (sn === 0) dot = 0
   else {
     const p = MA * MB
@@ -749,28 +796,29 @@ function vietaOf(a, b, c, k) {
   // vietaOf(1e308, 0, 1e-308) 真 Δ = −4、无实根，却被算成 Δ = 0 误
   // 判重根（符号都错）。逐项缩放累加后 Δ 的正负与量级都保得住；
   // |x1−x2| = √Δ/|a| 也从 (尾数, 指数) 直接开方再除 |a| 的尾数。
-  const st = [0, 0]
-  if (b !== 0) { const fb = frexp2(Math.abs(b)); expAdd(st, fb[0] * fb[0], 2 * fb[1]) }
+  const termsV = []
+  if (b !== 0) { const fb = frexp2(Math.abs(b)); expPush(termsV, fb[0] * fb[0], 2 * fb[1]) }
   if (c !== 0) {
     const fa = frexp2(Math.abs(a)), fc = frexp2(Math.abs(c))
-    expAdd(st, -4 * fa[0] * fc[0] * ((a < 0) !== (c < 0) ? -1 : 1), fa[1] + fc[1])
+    expPush(termsV, -4 * fa[0] * fc[0] * ((a < 0) !== (c < 0) ? -1 : 1), fa[1] + fc[1])
   }
+  const fe = expSumFE(termsV)
   let diffAbs = null, chord = null
-  if (st[0] > 0) {
+  if (fe[0] > 0) {
     let sm, se
-    if (st[1] % 2 === 0) { sm = Math.sqrt(st[0]); se = st[1] / 2 }
-    else { sm = Math.sqrt(2 * st[0]); se = (st[1] - 1) / 2 }
+    if (fe[1] % 2 === 0) { sm = Math.sqrt(fe[0]); se = fe[1] / 2 }
+    else { sm = Math.sqrt(2 * fe[0]); se = (fe[1] - 1) / 2 }
     const fa = frexp2(Math.abs(a))
     diffAbs = scalbn2(sm / fa[0], se - fa[1])
     const ak = Math.abs(k)
     const hyp = ak >= 1 ? ak * Math.sqrt(1 + (1 / ak) * (1 / ak)) : Math.sqrt(1 + ak * ak)
     chord = isFinite(diffAbs) ? prodT(hyp, diffAbs) : Infinity
-  } else if (st[0] === 0) {
+  } else if (fe[0] === 0) {
     diffAbs = 0
     chord = 0
   }
   return {
-    type: 'ok', disc: expVal(st), discNeg: st[0] < 0,
+    type: 'ok', disc: fe[0] === 0 ? 0 : scalbn2(fe[0], fe[1]), discNeg: fe[0] < 0,
     sum: -b / a, prod: c / a, diffAbs: diffAbs, chord: chord
   }
 }

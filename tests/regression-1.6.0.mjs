@@ -47,7 +47,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z/21z/22z/23z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z/21z/22z/23z/24z 断言按 SKIP 处理 */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -1379,6 +1379,33 @@ const fd1 = calc.formatDisplay(2.23607)
 ok('23g formatDisplay 不带尾零：2.23607 / 2.5 / 100.1 原样', fd1 === '2.23607' && calc.formatDisplay(2.5) === '2.5' && calc.formatDisplay(100.1) === '100.1', fd1)
 if (buglog === null) console.log('SKIP 23z BUGLOG 含第二十一轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
 else ok('23z BUGLOG 含第二十一轮条目', buglog.indexOf('第二十一轮') >= 0)
+
+// ===== §24 第二十二轮外部复审（精确求和与不连坐，2026-11-15） =====
+// 复审 3 项逐项实跑全部属实：expAdd 单尾数对齐累加的消去误差使点积 /
+// 期望随输入顺序变；Welford 平均数同病；向量页 bad gate 连坐隐藏。
+// 修法：expSumFE = BigInt 精确求和（53 位整数尾数对齐相加），三处
+// 调用点与统计平均数统一换用；vc/pm/sq 三页改逐行判溢出。
+ok('24a vecOf 点积排列一：小量在前 dot 恰 1', calc2.vecOf([1, 1e308, 1e308], [1, 1e308, -1e308]).dot === 1)
+ok('24a vecOf 点积排列二：大量在前 dot 恰 1', calc2.vecOf([1e308, 1e308, 1], [1e308, -1e308, 1]).dot === 1)
+ok('24a vecOf 点积排列三：负大量在前 dot 恰 1', calc2.vecOf([1e308, 1, 1e308], [-1e308, 1, 1e308]).dot === 1)
+const perms24 = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]
+const base24 = [[1, 0.5], [1e308, 0.25], [-1e308, 0.25]]
+let allE = true
+for (const pm of perms24) { const r = calc2.distOf(pm.map(function (i) { return base24[i] })); if (r.E !== 0.5) allE = false }
+ok('24a distOf 期望六种排列全等 0.5', allE)
+const st24a = calc2.statsOf([1, 1e308, -1e308])
+ok('24b statsOf 平均数排列一：恰 1/3、方差 Infinity', st24a.mean === 1 / 3 && st24a.popVar === Infinity, JSON.stringify(st24a))
+const st24b = calc2.statsOf([1e308, -1e308, 1])
+ok('24b statsOf 平均数排列二：恰 1/3', st24b.mean === 1 / 3, JSON.stringify(st24b))
+ok('24b statsOf 大数扎堆平均数恰 100000002', calc2.statsOf([100000001, 100000002, 100000003]).mean === 100000002)
+ok('24b statsOf 满量程平均数：[MAX, MAX] = MAX、[MAX, -MAX] = 0', calc2.statsOf([MAXV, MAXV]).mean === MAXV && calc2.statsOf([MAXV, -MAXV]).mean === 0)
+const m24 = Number.MAX_VALUE * 0.6
+const v24 = calc2.vecOf([m24, m24], [m24, -m24])
+ok('24c vecOf 部分溢出引擎契约：dot 0、模长有限、夹角 90、sum/diff 各一分量 Inf', v24.dot === 0 && isFinite(v24.magA) && v24.angle === 90 && v24.sum[0] === Infinity && v24.diff[1] === Infinity, JSON.stringify(v24))
+ok('24c 向量页逐行判溢出：bad gate 已除、点积行有「太大」分支', ux2.indexOf('const bad = !isFinite(r.dot)') < 0 && ux2.indexOf('a·b 太大了') >= 0)
+ok('24c 数列 / 排列组合页逐行判溢出', ux2.indexOf('项太大了') >= 0 && ux2.indexOf('cBig') >= 0)
+if (buglog === null) console.log('SKIP 24z BUGLOG 含第二十二轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+else ok('24z BUGLOG 含第二十二轮条目', buglog.indexOf('第二十二轮') >= 0)
 
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)
 if (fail) process.exit(1)

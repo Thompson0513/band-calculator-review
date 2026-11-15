@@ -888,8 +888,10 @@ export default {
     if (n > 999) { this.pmLines = ['n 太大了（最多 999）']; return }
     const res = calc2.permComb(n, r)
     if (res.error) { this.pmLines = [res.error]; return }
-    if (!isFinite(res.C)) { this.pmLines = ['数字太大，超出精确计算范围']; return }
-    const fc = res.cExact && Math.abs(res.C) < 1e16 ? String(res.C) : FD(res.C)
+    // C 溢出只标 C 行、A 行照常（同第二十二轮不连坐口径；A 行已有
+    // aOf 分行处理，C 行此前是整页 gate 会把有限的 A 一起隐藏）。
+    const cBig = !isFinite(res.C)
+    const fc = cBig ? '' : (res.cExact && Math.abs(res.C) < 1e16 ? String(res.C) : FD(res.C))
     // 2026-11-15 自查 F9：行超 30 字会被 .q-line（312px）省略号截掉末尾数字，
     // 改 10 位课本式 ×10 上标缩短（如 A(30,15) ≈ 2.028432049×10²⁰，28 字放得下）。
     const sci10 = function (x) { return calc.sciStr(x.toPrecision(10)) }
@@ -901,10 +903,10 @@ export default {
       la = 'A(' + n + ',' + r + ') ' + (res.aExact ? '= ' : '≈ ') + fa
       if (la.length > 30) la = 'A(' + n + ',' + r + ') ' + (res.aExact ? '= ' : '≈ ') + sci10(res.A)
     }
-    const lc0 = 'C(' + n + ',' + r + ') ' + (res.cExact ? '= ' : '≈ ') + fc
+    const lc0 = cBig ? 'C(' + n + ',' + r + ') 太大了，超出精确计算范围' : 'C(' + n + ',' + r + ') ' + (res.cExact ? '= ' : '≈ ') + fc
     this.pmLines = [
       la,
-      lc0.length > 30 ? 'C(' + n + ',' + r + ') ' + (res.cExact ? '= ' : '≈ ') + sci10(res.C) : lc0
+      (!cBig && lc0.length > 30) ? 'C(' + n + ',' + r + ') ' + (res.cExact ? '= ' : '≈ ') + sci10(res.C) : lc0
     ]
   },
   pmPad(v) {
@@ -936,9 +938,14 @@ export default {
     if (n > 9999) { this.sqLines = ['项数太大了（最多 9999）']; return }
     const r = calc2.seqSolve(this.sqKind, a1, x, n)
     if (r.error) { this.sqLines = [r.error]; return }
-    if (!isFinite(r.an) || !isFinite(r.Sn)) { this.sqLines = ['数字太大，超出精确计算范围']; return }
-    const fa = fmtVal(r.an), fs = fmtVal(r.Sn)
-    this.sqLines = ['第 ' + n + ' 项 ' + (fa.exact ? '= ' : '≈ ') + fa.t, '前 ' + n + ' 项和 ' + (fs.exact ? '= ' : '≈ ') + fs.t]
+    // 逐行判溢出、不连坐（同第二十二轮口径）：an 与 Sn 只需各自判，
+    // 一行太大另一行照常显示，不再整页 gate。
+    const fa = isFinite(r.an) ? fmtVal(r.an) : null
+    const fs = isFinite(r.Sn) ? fmtVal(r.Sn) : null
+    this.sqLines = [
+      fa ? '第 ' + n + ' 项 ' + (fa.exact ? '= ' : '≈ ') + fa.t : '第 ' + n + ' 项太大了，超出范围',
+      fs ? '前 ' + n + ' 项和 ' + (fs.exact ? '= ' : '≈ ') + fs.t : '前 ' + n + ' 项和太大了，超出范围'
+    ]
   },
   sqPad(v) {
     this.buzz()
@@ -1115,16 +1122,26 @@ export default {
     const b = this.vcDim === 2 ? [nums.b1, nums.b2] : [nums.b1, nums.b2, nums.b3]
     const r = calc2.vecOf(a, b)
     if (r.error) { this.vcLines = [r.error]; return }
-    const bad = !isFinite(r.dot) || !isFinite(r.magA) || !isFinite(r.magB) ||
-      r.sum.some(function (x) { return !isFinite(x) }) || r.diff.some(function (x) { return !isFinite(x) })
-    if (bad) { this.vcLines = ['数字太大，超出精确计算范围']; return }
+    // 逐行判溢出、不连坐（2026-11-15 第二十二轮复审）：旧版把点积 /
+    // 模长 / 和 / 差塞进一个 bad 条件，任一分量溢出就整页只剩「数字
+    // 太大」——实测 dot = 0、双模长、夹角 90° 全对时也被 sum 的一个
+    // Infinity 分量连坐隐藏。改逐行：哪行超范围哪行标「太大」，其
+    // 余照常显示（同统计 / 分布列第二十一轮口径）。
     const line = function (label, f) { return label + ' ' + (f.exact ? '= ' : '≈ ') + f.t }
-    const ma = fmtShortE(r.magA), mb = fmtShortE(r.magB)
+    const magT = function (label, mv) {
+      if (!isFinite(mv)) return label + ' 太大了'
+      const f = fmtShortE(mv)
+      return label + ' ' + (f.exact ? '= ' : '≈ ') + f.t
+    }
+    const vecT = function (label, arr) {
+      for (const x of arr) if (!isFinite(x)) return label + ' 太大了，超出范围'
+      return line(label, fmtVecE(arr))
+    }
     const lines = [
-      line('a·b', fmtVal(r.dot)),
-      '|a| ' + (ma.exact ? '= ' : '≈ ') + ma.t + '，|b| ' + (mb.exact ? '= ' : '≈ ') + mb.t,
-      line('a+b', fmtVecE(r.sum)),
-      line('a−b', fmtVecE(r.diff))
+      isFinite(r.dot) ? line('a·b', fmtVal(r.dot)) : 'a·b 太大了，超出范围',
+      magT('|a|', r.magA) + '，' + magT('|b|', r.magB),
+      vecT('a+b', r.sum),
+      vecT('a−b', r.diff)
     ]
     if (r.angle === null) lines.push(r.magA === 0 ? 'a 是零向量，没有夹角' : 'b 是零向量，没有夹角')
     else lines.push('夹角 ' + angSeg(r.angle))
