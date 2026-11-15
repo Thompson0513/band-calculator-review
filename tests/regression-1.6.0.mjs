@@ -47,7 +47,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z/17z/18z/19z/20z/21z 断言按 SKIP 处理 */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -349,7 +349,9 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   eq('9a 公约数基线不变', JSON.stringify(inst.gLines), JSON.stringify(['最大公约数 = 6', '最小公倍数 = 36']))
   eq('9b 根号化简基线不变', inst.sqrtLines[0], '√12 = 2√3')
   // 2026-11-15 修订：新增「数据统计」工具后工具箱 14 → 15 个（§20），按先例翻转并披露。
-  eq('9c 工具箱 15 个工具（圆 + 微信定案四个新工具 + 数据统计）', inst.tools.length, 15)
+  // 2026-11-15 再修订：用户点名「那些都做」，新增分布列 / 向量 / 复数 / 韦达弦长
+  // 四个工具后 15 → 19 个（§21），按先例翻转并披露。
+  eq('9c 工具箱 19 个工具（圆 + 微信定案四工具 + 统计 + 分布列/向量/复数/韦达）', inst.tools.length, 19)
   ok('9c 工具列表含圆', inst.tools.some((t) => t.id === 'circ'))
   ok('9c 工具列表含四个新工具', ['rtri', 'law', 'perm', 'seq'].every((id) => inst.tools.some((t) => t.id === id)))
   ok('9d 模板含圆视图', ux.indexOf("view === 'circ'") >= 0)
@@ -1259,6 +1261,46 @@ const t2src = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.u
 ok('20 tools2 页面已接 statsOf 且菜单含数据统计', t2src.indexOf('statsOf') >= 0 && t2src.indexOf('数据统计') >= 0)
 if (buglog === null) console.log('SKIP 20z BUGLOG 含数据统计条目（[审查仓适配] BUGLOG.md 不在公开仓）')
 else ok('20z BUGLOG 含数据统计条目', buglog.indexOf('数据统计工具新增') >= 0)
+
+// ===== §21 统计补全 + 分布列 / 向量 / 复数 / 韦达弦长（用户点名「那些都做」，2026-11-15） =====
+const s21a = calc2.statsOf([1, 2, 3, 4, 5])
+ok('21 stats 中位数(奇数)=3、无众数、极差=4', s21a.median === 3 && s21a.modes === null && s21a.range === 4, JSON.stringify(s21a))
+const s21b = calc2.statsOf([1, 2, 3, 4])
+ok('21 stats 中位数(偶数)=2.5', s21b.median === 2.5 && s21b.range === 3, JSON.stringify(s21b))
+const s21c = calc2.statsOf([1, 1, 2, 2, 3])
+ok('21 stats 双众数 [1,2]、中位数 2', JSON.stringify(s21c.modes) === '[1,2]' && s21c.median === 2, JSON.stringify(s21c))
+const s21d = calc2.statsOf([1e15 + 1, 1e15 + 2, 1e15 + 3])
+ok('21 stats 扎堆组中位数精确、极差 2', s21d.median === 1e15 + 2 && s21d.range === 2, JSON.stringify(s21d))
+const d21a = calc2.distOf([[0, 0.2], [1, 0.3], [2, 0.5]])
+ok('21 distOf 经典列 E=1.3、D=0.61', d21a.type === 'ok' && Math.abs(d21a.E - 1.3) < 1e-12 && Math.abs(d21a.D - 0.61) < 1e-12 && Math.abs(d21a.sd - Math.sqrt(0.61)) < 1e-12, JSON.stringify(d21a))
+const d21b = calc2.distOf([[0, 0.5], [1, 0.4]])
+ok('21 distOf Σp≠1 报错并回带 psum', !!d21b.error && Math.abs(d21b.psum - 0.9) < 1e-15, JSON.stringify(d21b))
+eq('21 distOf p 越界报错', calc2.distOf([[0, 1.5], [1, -0.5]]).error, '概率要在 0 到 1 之间')
+const d21d = calc2.distOf([[1e15 + 1, 1 / 3], [1e15 + 2, 1 / 3], [1e15 + 3, 1 / 3]])
+ok('21 distOf 相消组 E 精确、D=2/3（两遍法）', d21d.type === 'ok' && d21d.E === 1e15 + 2 && Math.abs(d21d.D - 2 / 3) / (2 / 3) < 1e-9, JSON.stringify(d21d))
+const v21a = calc2.vecOf([1, 2, 3], [4, 5, 6])
+ok('21 vecOf 点积 32、模 √14/√77、和 (5,7,9)、角 ≈12.933°', v21a.dot === 32 && Math.abs(v21a.magA - Math.sqrt(14)) < 1e-12 && Math.abs(v21a.magB - Math.sqrt(77)) < 1e-12 && JSON.stringify(v21a.sum) === '[5,7,9]' && Math.abs(v21a.angle - 12.933154491899135) < 1e-9, JSON.stringify(v21a))
+const v21b = calc2.vecOf([3, 4], [1, 0])
+ok('21 vecOf 2D |a|=5、夹角 acos(3/5)', v21b.magA === 5 && Math.abs(v21b.angle - 53.13010235415598) < 1e-9, JSON.stringify(v21b))
+const v21c = calc2.vecOf([1e200, 1e200], [1e200, -1e200])
+ok('21 vecOf 巨大分量：点积恰 0（不 NaN）、模有限、夹角 90°', v21c.dot === 0 && isFinite(v21c.magA) && v21c.angle === 90, JSON.stringify(v21c))
+const v21d = calc2.vecOf([0, 0], [1, 2])
+ok('21 vecOf 零向量夹角为 null', v21d.angle === null && v21d.magA === 0, JSON.stringify(v21d))
+const c21a = calc2.cplxOps([1, 2], [3, 4])
+ok('21 cplx 和差积商与模', JSON.stringify(c21a.add) === '[4,6]' && JSON.stringify(c21a.sub) === '[-2,-2]' && JSON.stringify(c21a.mul) === '[-5,10]' && Math.abs(c21a.div[0] - 0.44) < 1e-15 && Math.abs(c21a.div[1] - 0.08) < 1e-15 && Math.abs(c21a.mag1 - Math.sqrt(5)) < 1e-15 && c21a.mag2 === 5, JSON.stringify(c21a))
+const c21b = calc2.cplxOps([1e200, 1e200], [1e200, -1e200])
+ok('21 cplx 巨大分量除法稳定 = i', Math.abs(c21b.div[0]) < 1e-12 && Math.abs(c21b.div[1] - 1) < 1e-12, JSON.stringify(c21b.div))
+eq('21 cplx 除数为 0 时 div 为 null', calc2.cplxOps([1, 2], [0, 0]).div, null)
+const w21a = calc2.vietaOf(1, -3, 2, 1)
+ok('21 vietaOf Δ=1、和 3、积 2、弦长 √2', Math.abs(w21a.disc - 1) < 1e-12 && w21a.sum === 3 && w21a.prod === 2 && Math.abs(w21a.chord - Math.SQRT2) < 1e-12, JSON.stringify(w21a))
+const w21b = calc2.vietaOf(1, 0, 1, 2)
+ok('21 vietaOf Δ<0 标记、无弦长', w21b.discNeg === true && w21b.chord === null && w21b.disc === -4, JSON.stringify(w21b))
+eq('21 vietaOf a=0 报错', calc2.vietaOf(0, 1, 2, 1).error, 'a 不能是 0（不是二次方程）')
+const w21d = calc2.vietaOf(1, -3, 2, 0)
+ok('21 vietaOf k=0 弦长 = |x1−x2| = 1', Math.abs(w21d.chord - 1) < 1e-12, JSON.stringify(w21d))
+ok('21 页面接线：四引擎与菜单齐全', t2src.indexOf('distOf') >= 0 && t2src.indexOf('vecOf') >= 0 && t2src.indexOf('cplxOps') >= 0 && t2src.indexOf('vietaOf') >= 0 && t2src.indexOf('分布列') >= 0 && t2src.indexOf('向量运算') >= 0 && t2src.indexOf('复数运算') >= 0 && t2src.indexOf('韦达 · 弦长') >= 0)
+if (buglog === null) console.log('SKIP 21z BUGLOG 含四工具条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+else ok('21z BUGLOG 含四工具条目', buglog.indexOf('分布列期望方差') >= 0 && buglog.indexOf('向量运算') >= 0 && buglog.indexOf('复数运算') >= 0 && buglog.indexOf('韦达定理与弦长') >= 0)
 
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)
 if (fail) process.exit(1)

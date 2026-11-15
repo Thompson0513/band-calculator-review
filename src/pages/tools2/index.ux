@@ -158,14 +158,134 @@
         <div class="st-mini" onclick="stDel"><text class="st-mini-t">删上个</text></div>
         <div class="st-mini" onclick="stClear"><text class="st-mini-t">清空</text></div>
       </div>
-      <div class="q-res" if="{{stTab === 'res'}}">
-        <text class="q-line q-line-s" for="{{stLines}}">{{' ' + $item}}</text>
+      <div class="q-res q-res-t" if="{{stTab === 'res'}}">
+        <text class="q-line q-line-t" for="{{stLines}}">{{' ' + $item}}</text>
       </div>
-      <div class="q-res" if="{{stTab === 'data'}}">
-        <text class="q-line q-line-s" for="{{stRows}}">{{' ' + $item}}</text>
+      <div class="q-res q-res-t" if="{{stTab === 'samp'}}">
+        <text class="q-line q-line-t" for="{{stSampLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="q-res q-res-t" if="{{stTab === 'data'}}">
+        <text class="q-line q-line-t" for="{{stRows}}">{{' ' + $item}}</text>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm key-xs key-c5 {{$item.kcls ? $item.kcls : ''}}" for="{{quadKeys}}" onclick="stPad($item.v)">
+        <div class="key key-num key-sm key-xs key-c5 key-t2 {{$item.kcls ? $item.kcls : ''}}" for="{{quadKeys}}" onclick="stPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 分布列（期望 / 方差） ===== -->
+    <div class="view" if="{{view === 'dist'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">分布列</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <div class="chip-row">
+        <div class="chip {{dtTab === $item.id ? 'chip-on' : ''}}" for="{{dtTabChips}}" onclick="setDtTab($item.id)">
+          <text class="chip-t {{dtTab === $item.id ? 'chip-t-on' : ''}}">{{$item.name}}</text>
+        </div>
+      </div>
+      <div class="q-fields q-fields-c">
+        <div class="q-field q-field-dt {{dtField === 'x' ? 'q-field-on' : ''}}" onclick="dtFocus('x')">
+          <text class="q-fl">x</text><text class="q-fv" style="font-size: {{dtFvPx}}px;">{{dtX ? dtX : '?'}}</text>
+        </div>
+        <div class="q-field q-field-dt {{dtField === 'p' ? 'q-field-on' : ''}}" onclick="dtFocus('p')">
+          <text class="q-fl">p</text><text class="q-fv" style="font-size: {{dtFvPx}}px;">{{dtP ? dtP : '?'}}</text>
+        </div>
+        <div class="st-mini" onclick="dtDel"><text class="st-mini-t">删上个</text></div>
+      </div>
+      <div class="q-res q-res-v" if="{{dtTab === 'res'}}">
+        <text class="q-line q-line-t" for="{{dtLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="q-res q-res-v" if="{{dtTab === 'data'}}">
+        <text class="q-line q-line-t" for="{{dtRows}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm key-xs key-c5 key-t2 {{$item.keycls ? $item.keycls : ''}}" for="{{quadKeys}}" onclick="dtPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 向量运算 ===== -->
+    <div class="view" if="{{view === 'vec'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">向量运算</text>
+        <div class="bar-sp"></div>
+        <div class="bbtn bbtn-s" onclick="vcDimToggle"><text class="bar-btn">{{vcDim === 2 ? '2维' : '3维'}}</text></div>
+      </div>
+      <div class="q-fields">
+        <div class="q-field {{vcField === $item.key ? 'q-field-on' : ''}}" for="{{vcFieldDefs1}}" onclick="vcFocus($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{vcFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-fields q-fields-c">
+        <div class="q-field {{vcField === $item.key ? 'q-field-on' : ''}}" for="{{vcFieldDefs2}}" onclick="vcFocus($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{vcFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-res q-res-v">
+        <text class="q-line q-line-t" for="{{vcLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm key-xs key-c5 key-t2 {{$item.keycls ? $item.keycls : ''}}" for="{{quadKeys}}" onclick="vcPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 复数运算 ===== -->
+    <div class="view" if="{{view === 'cplx'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">复数运算</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <div class="q-fields">
+        <div class="q-field {{cxField === $item.key ? 'q-field-on' : ''}}" for="{{cxFieldDefs1}}" onclick="cxFocus($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{cxFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-fields q-fields-c">
+        <div class="q-field {{cxField === $item.key ? 'q-field-on' : ''}}" for="{{cxFieldDefs2}}" onclick="cxFocus($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{cxFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-res q-res-v">
+        <text class="q-line q-line-t" for="{{cxLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm key-xs key-c5 key-t2 {{$item.keycls ? $item.keycls : ''}}" for="{{quadKeys}}" onclick="cxPad($item.v)">
+          <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 韦达定理 · 弦长 ===== -->
+    <div class="view" if="{{view === 'vieta'}}">
+      <div class="bar">
+        <div class="bbtn" onclick="goBackTools"><text class="bar-btn">‹ 工具箱</text></div>
+        <text class="bar-title">韦达 · 弦长</text>
+        <div class="bbtn-ghost"><text class="bar-btn">　</text></div>
+      </div>
+      <div class="q-fields">
+        <div class="q-field {{vtField === $item.key ? 'q-field-on' : ''}}" for="{{vtFieldDefs1}}" onclick="vtFocus($item.key)">
+          <text class="q-fl">{{$item.label}}</text><text class="q-fv" style="font-size: {{vtFvPx}}px;">{{$item.val ? $item.val : '?'}}</text>
+        </div>
+      </div>
+      <div class="q-fields q-fields-c">
+        <div class="q-field {{vtField === 'k' ? 'q-field-on' : ''}}" onclick="vtFocus('k')">
+          <text class="q-fl">k</text><text class="q-fv" style="font-size: {{vtFvPx}}px;">{{vtVals.k ? vtVals.k : '?'}}</text>
+        </div>
+        <text class="q-formula-t vt-hint">弦长 = √(1+k²)·|x1−x2|</text>
+      </div>
+      <div class="q-res q-res-v">
+        <text class="q-line q-line-t" for="{{vtLines}}">{{' ' + $item}}</text>
+      </div>
+      <div class="pad pad-sm">
+        <div class="key key-num key-sm key-xs key-c5 key-t2 {{$item.keycls ? $item.keycls : ''}}" for="{{quadKeys}}" onclick="vtPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
         </div>
       </div>
@@ -406,6 +526,38 @@ function fmtVal(v) {
 // 漏出原始 e 记法（如 1.7179250691067045e+47），改走 12 位课本式 ×10 上标。
 function intTxt(n) { return Math.abs(n) < 1e21 ? String(n) : FD(parseFloat(n.toPrecision(12))) }
 
+// 向量 / 复数分量专用：只给单一形式（精确分数优先、否则小数），不带
+// fmtVal 的「分数 = 小数」双显后缀——分量挤在括号里，双显会撑爆行宽。
+function fmtPartE(v) {
+  const f = calc.toFraction(v)
+  if (f && (f.d !== 1 || calc.fracIsExact(v, f))) return { t: f.d === 1 ? intTxt(f.n) : intTxt(f.n) + '/' + f.d, exact: true }
+  return { t: FD(v), exact: false }
+}
+// 短显版（向量 / 复数把两个模长并一行时用）：精确分数优先，否则
+// 6 位有效数字——模长并行显示时长小数会撑爆行宽。
+function fmtShortE(v) {
+  const f = calc.toFraction(v)
+  if (f && (f.d !== 1 || calc.fracIsExact(v, f))) return { t: f.d === 1 ? intTxt(f.n) : intTxt(f.n) + '/' + f.d, exact: true }
+  return { t: FD(parseFloat(v.toPrecision(6))), exact: false }
+}
+function fmtVecE(arr) {
+  let exact = true
+  const parts = arr.map(function (v) { const p = fmtPartE(v); if (!p.exact) exact = false; return p.t })
+  return { t: '(' + parts.join(', ') + ')', exact: exact }
+}
+function fmtCplxE(re, im) {
+  if (re === 0 && im === 0) return { t: '0', exact: true }
+  const fr = fmtPartE(re), fi = fmtPartE(Math.abs(im))
+  let t = ''
+  if (re !== 0) t = fr.t
+  if (im !== 0) {
+    const part = (Math.abs(im) === 1 ? '' : fi.t) + 'i'
+    t = t === '' ? (im < 0 ? '-' + part : part) : t + (im < 0 ? ' − ' : ' + ') + part
+  }
+  if (t === '') t = fr.t
+  return { t: t, exact: fr.exact && fi.exact }
+}
+
 function fvPxOf(vals, tight) {
   let m = 0
   for (const v of vals) m = Math.max(m, String(v === null || v === undefined ? '' : v).length)
@@ -433,7 +585,11 @@ export default {
       { id: 'law', ico: '弦', name: '正弦 · 余弦定理', desc: '任意三角形，填任意三个量' },
       { id: 'perm', ico: '排', name: '排列组合', desc: 'A(n,r) 与 C(n,r)，整数精确算' },
       { id: 'seq', ico: '列', name: '等差 · 等比数列', desc: '填首项与公差 / 公比，求项与和' },
-      { id: 'stats', ico: '均', name: '数据统计', desc: '平均数 · 方差 · 标准差' }
+      { id: 'stats', ico: '均', name: '数据统计', desc: '平均数 · 中位数 · 众数 · 方差' },
+      { id: 'dist', ico: '期', name: '分布列', desc: '期望 E(X) · 方差 D(X)' },
+      { id: 'vec', ico: '向', name: '向量运算', desc: '数量积 · 模 · 夹角' },
+      { id: 'cplx', ico: 'i', name: '复数运算', desc: '四则运算 · 模' },
+      { id: 'vieta', ico: '韦', name: '韦达 · 弦长', desc: '联立方程的根与弦长' }
     ],
     rta: '3', rtb: '4', rtc: '', rtA: '', rtB: '',
     rtField: 'a',
@@ -463,8 +619,44 @@ export default {
     stRows: ['还没有数据'],
     stFvPx: 20,
     stTabChips: [
+      { id: 'res', name: '特征' },
+      { id: 'samp', name: '方差' },
+      { id: 'data', name: '数据' }
+    ],
+    stSampLines: ['样本方差 要 2 个以上数据'],
+    // —— 2026-11-15 新增四工具：分布列 / 向量 / 复数 / 韦达弦长 ——
+    dtTab: 'res',
+    dtTabChips: [
       { id: 'res', name: '结果' },
       { id: 'data', name: '数据' }
+    ],
+    dtX: '', dtP: '', dtField: 'x', dtPairs: [],
+    dtLines: ['输取值 x 和概率 p，点 » 加一组', '全部加完，概率之和要正好是 1'],
+    dtRows: ['还没有数据'],
+    dtFvPx: 25,
+    vcDim: 3, vcField: 'a1',
+    vcVals: { a1: '1', a2: '2', a3: '3', b1: '4', b2: '5', b3: '6' },
+    vcLines: [], vcFvPx: 25,
+    cxField: 'a',
+    cxVals: { a: '1', b: '2', c: '3', d: '4' },
+    cxLines: [], cxFvPx: 25,
+    vtField: 'a',
+    vtVals: { a: '1', b: '-3', c: '2', k: '1' },
+    vtLines: [], vtFvPx: 25,
+    vcFieldDefs1: [
+      { key: 'a1', label: 'a1', val: '1' }, { key: 'a2', label: 'a2', val: '2' }, { key: 'a3', label: 'a3', val: '3' }
+    ],
+    vcFieldDefs2: [
+      { key: 'b1', label: 'b1', val: '4' }, { key: 'b2', label: 'b2', val: '5' }, { key: 'b3', label: 'b3', val: '6' }
+    ],
+    cxFieldDefs1: [
+      { key: 'a', label: 'a', val: '1' }, { key: 'b', label: 'b', val: '2' }
+    ],
+    cxFieldDefs2: [
+      { key: 'c', label: 'c', val: '3' }, { key: 'd', label: 'd', val: '4' }
+    ],
+    vtFieldDefs1: [
+      { key: 'a', label: 'a', val: '1' }, { key: 'b', label: 'b', val: '-3' }, { key: 'c', label: 'c', val: '2' }
     ],
     rtFieldDefs1: [
       { key: 'a', label: 'a', val: '3' }, { key: 'b', label: 'b', val: '4' }, { key: 'c', label: 'c', val: '' }
@@ -490,7 +682,7 @@ export default {
     // 不闪本页菜单（2026-11-15 真机反馈修复）。下面的存储读是参数缺失时的兜底。
     // 2026-11-15 第十六轮复审：参数有效时完全跳过存储读——旧写法无条件
     // 读，存储里若残留旧值会把参数指定的页面覆盖掉（异步竞态）。
-    const paramTool = this.tool === 'rtri' || this.tool === 'law' || this.tool === 'perm' || this.tool === 'seq' || this.tool === 'stats'
+    const paramTool = this.tool === 'rtri' || this.tool === 'law' || this.tool === 'perm' || this.tool === 'seq' || this.tool === 'stats' || this.tool === 'dist' || this.tool === 'vec' || this.tool === 'cplx' || this.tool === 'vieta'
     if (paramTool) this.view = this.tool
     this.fetchDeviceId()
     const self = this
@@ -498,7 +690,7 @@ export default {
       storage.get({
         key: 'calc_tool_nav',
         success: function (data) {
-          if (data === 'rtri' || data === 'law' || data === 'perm' || data === 'seq' || data === 'stats') self.view = data
+          if (data === 'rtri' || data === 'law' || data === 'perm' || data === 'seq' || data === 'stats' || data === 'dist' || data === 'vec' || data === 'cplx' || data === 'vieta') self.view = data
           try { storage.set({ key: 'calc_tool_nav', value: '' }) } catch (e) {}
         },
         fail: function () {}
@@ -509,6 +701,13 @@ export default {
     this.pmSolve()
     this.sqSolve()
     this.stSolve()
+    this.dtSolve()
+    this.vcSyncFields()
+    this.vcSolve()
+    this.cxSyncFields()
+    this.cxSolve()
+    this.vtSyncFields()
+    this.vtSolve()
   },
   onBackPress() {
     if (this.view === 'menu' || this.view === 'locked') return false
@@ -763,30 +962,44 @@ export default {
     if (n === 0) this.stRows = ['还没有数据']
     else {
       const rows = []
-      for (let i = 0; i < n && rows.length < 5; i += 3) {
+      for (let i = 0; i < n && rows.length < 4; i += 3) {
         const parts = []
         for (let j = i; j < Math.min(i + 3, n); j++) parts.push((j + 1) + '.' + FD(this.stVals[j]))
         rows.push(parts.join('  '))
       }
-      rows.push(n > 15 ? '…共 ' + n + ' 个（删上个逐个删）' : '共 ' + n + ' 个')
+      rows.push(n > 12 ? '…共 ' + n + ' 个（删上个逐个删）' : '共 ' + n + ' 个')
       this.stRows = rows
     }
-    if (n === 0) { this.stLines = ['输一个数，点 » 加入数据', '有数据后自动出平均数和方差']; return }
-    const r = calc2.statsOf(this.stVals)
-    if (r.error) { this.stLines = [r.error]; return }
-    const fm = fmtVal(r.mean), fpv = fmtVal(r.popVar), fps = fmtVal(r.popSd)
-    const lines = [
-      '平均数 ' + (fm.exact ? '= ' : '≈ ') + fm.t,
-      '总体方差 ' + (fpv.exact ? '= ' : '≈ ') + fpv.t,
-      '总体标准差 ' + (fps.exact ? '= ' : '≈ ') + fps.t
-    ]
-    if (r.sampVar === null) lines.push('样本方差 要 2 个以上数据')
-    else {
-      const fsv = fmtVal(r.sampVar), fss = fmtVal(r.sampSd)
-      lines.push('样本方差 ' + (fsv.exact ? '= ' : '≈ ') + fsv.t)
-      lines.push('样本标准差 ' + (fss.exact ? '= ' : '≈ ') + fss.t)
+    if (n === 0) {
+      this.stLines = ['输一个数，点 » 加入数据', '有数据后自动出平均数、方差等']
+      this.stSampLines = ['有数据后这里出方差与标准差']
+      return
     }
+    const r = calc2.statsOf(this.stVals)
+    if (r.error) { this.stLines = [r.error]; this.stSampLines = [r.error]; return }
+    const line = function (label, f) { return label + ' ' + (f.exact ? '= ' : '≈ ') + f.t }
+    const lines = [
+      line('平均数', fmtVal(r.mean)),
+      line('中位数', fmtVal(r.median))
+    ]
+    if (r.n === 1) lines.push(line('众数', fmtVal(this.stVals[0])))
+    else if (r.modes === null) lines.push('众数 没有（都只出现一次）')
+    else lines.push('众数 ' + r.modes.map(function (v) { return FD(v) }).join('、'))
+    if (isFinite(r.range)) lines.push(line('极差', fmtVal(r.range)))
+    else lines.push('极差 太大（数据跨度超范围）')
     this.stLines = lines
+    const vl = [
+      line('总体方差', fmtVal(r.popVar)),
+      line('总体标准差', fmtVal(r.popSd))
+    ]
+    if (r.sampVar === null) {
+      vl.push('样本方差 要 2 个以上数据')
+      vl.push('样本标准差 要 2 个以上数据')
+    } else {
+      vl.push(line('样本方差', fmtVal(r.sampVar)))
+      vl.push(line('样本标准差', fmtVal(r.sampSd)))
+    }
+    this.stSampLines = vl
   },
   stAdd() {
     const v = parseCoeff(this.stIn)
@@ -804,6 +1017,212 @@ export default {
     if (r === 'NEXT') { this.stAdd(); return }
     this.stIn = r
     this.stFvPx = fvPxOf([this.stIn], true)
+  },
+  // —— 分布列（2026-11-15 新增）——
+  setDtTab(id) { this.buzz(); this.dtTab = id },
+  dtFocus(f) { this.buzz(); this.dtField = f },
+  dtSolve() {
+    this.dtFvPx = fvPxOf([this.dtX, this.dtP], true)
+    const n = this.dtPairs.length
+    if (n === 0) {
+      this.dtRows = ['还没有数据']
+      this.dtLines = ['输取值 x 和概率 p，点 » 加一组', '全部加完，概率之和要正好是 1']
+      return
+    }
+    const rows = []
+    for (let i = 0; i < n && rows.length < 4; i += 3) {
+      const parts = []
+      for (let j = i; j < Math.min(i + 3, n); j++) parts.push(FD(this.dtPairs[j][0]) + '，' + FD(this.dtPairs[j][1]))
+      rows.push(parts.join('  '))
+    }
+    rows.push(n > 12 ? '…共 ' + n + ' 组（删上个逐个删）' : '共 ' + n + ' 组')
+    this.dtRows = rows
+    const r = calc2.distOf(this.dtPairs)
+    if (r.error) {
+      if (r.psum !== undefined) this.dtLines = ['已加 ' + n + ' 组，概率和 ≈ ' + FD(r.psum), '全部加完，概率和要正好是 1']
+      else this.dtLines = [r.error]
+      return
+    }
+    const line = function (label, f) { return label + ' ' + (f.exact ? '= ' : '≈ ') + f.t }
+    this.dtLines = [
+      line('期望 E(X)', fmtVal(r.E)),
+      line('方差 D(X)', fmtVal(r.D)),
+      line('标准差', fmtVal(r.sd)),
+      '共 ' + n + ' 组，概率和 = 1 ✓'
+    ]
+  },
+  dtAdd() {
+    const x = parseCoeff(this.dtX), p = parseCoeff(this.dtP)
+    if (this.dtX === '' || isNaN(x)) { this.dtTab = 'res'; this.dtLines = ['先输取值 x 再加']; return }
+    if (this.dtP === '' || isNaN(p)) { this.dtTab = 'res'; this.dtLines = ['先输概率 p 再加']; this.dtField = 'p'; return }
+    if (p < 0 || p > 1) { this.dtTab = 'res'; this.dtLines = ['概率要在 0 到 1 之间']; return }
+    if (this.dtPairs.length >= 50) { this.dtTab = 'res'; this.dtLines = ['最多 50 组']; return }
+    this.dtPairs.push([x, p])
+    this.dtX = ''; this.dtP = ''; this.dtField = 'x'
+    this.dtSolve()
+  },
+  dtDel() { this.buzz(); if (this.dtPairs.length) this.dtPairs.pop(); this.dtSolve() },
+  dtPad(v) {
+    this.buzz()
+    if (this.dtField === 'x') {
+      const r = editCoeff(this.dtX, v)
+      if (r === 'NEXT') { this.dtField = 'p'; this.dtFvPx = fvPxOf([this.dtX, this.dtP], true); return }
+      this.dtX = r
+    } else {
+      const r = editCoeff(this.dtP, v)
+      if (r === 'NEXT') { this.dtAdd(); return }
+      this.dtP = r
+    }
+    this.dtFvPx = fvPxOf([this.dtX, this.dtP], true)
+  },
+  // —— 向量运算（2026-11-15 新增）——
+  vcSyncFields() {
+    const v = this.vcVals
+    const d3 = this.vcDim === 3
+    this.vcFieldDefs1 = d3
+      ? [{ key: 'a1', label: 'a1', val: v.a1 }, { key: 'a2', label: 'a2', val: v.a2 }, { key: 'a3', label: 'a3', val: v.a3 }]
+      : [{ key: 'a1', label: 'a1', val: v.a1 }, { key: 'a2', label: 'a2', val: v.a2 }]
+    this.vcFieldDefs2 = d3
+      ? [{ key: 'b1', label: 'b1', val: v.b1 }, { key: 'b2', label: 'b2', val: v.b2 }, { key: 'b3', label: 'b3', val: v.b3 }]
+      : [{ key: 'b1', label: 'b1', val: v.b1 }, { key: 'b2', label: 'b2', val: v.b2 }]
+    this.vcFvPx = fvPxOf([v.a1, v.a2, v.a3, v.b1, v.b2, v.b3], true)
+  },
+  vcFocus(k) { this.buzz(); this.vcField = k },
+  vcDimToggle() {
+    this.buzz()
+    this.vcDim = this.vcDim === 2 ? 3 : 2
+    if (this.vcDim === 2 && (this.vcField === 'a3' || this.vcField === 'b3')) this.vcField = 'a1'
+    this.vcSyncFields(); this.vcSolve()
+  },
+  vcSolve() {
+    const v = this.vcVals
+    const keys = this.vcDim === 2 ? ['a1', 'a2', 'b1', 'b2'] : ['a1', 'a2', 'a3', 'b1', 'b2', 'b3']
+    const nums = {}
+    for (const k of keys) {
+      const s = v[k]
+      const num = parseCoeff(s)
+      if (s === '' || isNaN(num)) { this.vcLines = ['有分量没输对']; return }
+      nums[k] = num
+    }
+    const a = this.vcDim === 2 ? [nums.a1, nums.a2] : [nums.a1, nums.a2, nums.a3]
+    const b = this.vcDim === 2 ? [nums.b1, nums.b2] : [nums.b1, nums.b2, nums.b3]
+    const r = calc2.vecOf(a, b)
+    if (r.error) { this.vcLines = [r.error]; return }
+    const bad = !isFinite(r.dot) || !isFinite(r.magA) || !isFinite(r.magB) ||
+      r.sum.some(function (x) { return !isFinite(x) }) || r.diff.some(function (x) { return !isFinite(x) })
+    if (bad) { this.vcLines = ['数字太大，超出精确计算范围']; return }
+    const line = function (label, f) { return label + ' ' + (f.exact ? '= ' : '≈ ') + f.t }
+    const ma = fmtShortE(r.magA), mb = fmtShortE(r.magB)
+    const lines = [
+      line('a·b', fmtVal(r.dot)),
+      '|a| ' + (ma.exact ? '= ' : '≈ ') + ma.t + '，|b| ' + (mb.exact ? '= ' : '≈ ') + mb.t,
+      line('a+b', fmtVecE(r.sum)),
+      line('a−b', fmtVecE(r.diff))
+    ]
+    if (r.angle === null) lines.push(r.magA === 0 ? 'a 是零向量，没有夹角' : 'b 是零向量，没有夹角')
+    else lines.push('夹角 ' + angSeg(r.angle))
+    this.vcLines = lines
+  },
+  vcPad(v) {
+    this.buzz()
+    const order = this.vcDim === 2 ? ['a1', 'a2', 'b1', 'b2'] : ['a1', 'a2', 'a3', 'b1', 'b2', 'b3']
+    const r = editCoeff(this.vcVals[this.vcField], v)
+    if (r === 'NEXT') {
+      const i = order.indexOf(this.vcField)
+      this.vcField = order[(i + 1) % order.length]
+      return
+    }
+    this.vcVals[this.vcField] = r
+    this.vcSyncFields(); this.vcSolve()
+  },
+  // —— 复数运算（2026-11-15 新增）——
+  cxSyncFields() {
+    const v = this.cxVals
+    this.cxFieldDefs1 = [{ key: 'a', label: 'a', val: v.a }, { key: 'b', label: 'b', val: v.b }]
+    this.cxFieldDefs2 = [{ key: 'c', label: 'c', val: v.c }, { key: 'd', label: 'd', val: v.d }]
+    this.cxFvPx = fvPxOf([v.a, v.b, v.c, v.d], true)
+  },
+  cxFocus(k) { this.buzz(); this.cxField = k },
+  cxSolve() {
+    const v = this.cxVals
+    const nums = {}
+    for (const k of ['a', 'b', 'c', 'd']) {
+      const s = v[k]
+      const num = parseCoeff(s)
+      if (s === '' || isNaN(num)) { this.cxLines = ['z1 = a + bi，z2 = c + di', '有格子没输对']; return }
+      nums[k] = num
+    }
+    const r = calc2.cplxOps([nums.a, nums.b], [nums.c, nums.d])
+    if (r.error) { this.cxLines = [r.error]; return }
+    const line = function (label, f) { return label + ' ' + (f.exact ? '= ' : '≈ ') + f.t }
+    const cl = function (label, pair) {
+      if (!isFinite(pair[0]) || !isFinite(pair[1])) return label + ' 太大了，超出范围'
+      return line(label, fmtCplxE(pair[0], pair[1]))
+    }
+    const m1 = isFinite(r.mag1) ? fmtShortE(r.mag1) : null
+    const m2 = isFinite(r.mag2) ? fmtShortE(r.mag2) : null
+    this.cxLines = [
+      cl('z1+z2', r.add),
+      cl('z1−z2', r.sub),
+      cl('z1×z2', r.mul),
+      r.div === null ? 'z1÷z2 除数是 0，没法除' : cl('z1÷z2', r.div),
+      (m1 ? '|z1| ' + (m1.exact ? '= ' : '≈ ') + m1.t : '|z1| 太大了') + '，' + (m2 ? '|z2| ' + (m2.exact ? '= ' : '≈ ') + m2.t : '|z2| 太大了')
+    ]
+  },
+  cxPad(v) {
+    this.buzz()
+    const order = ['a', 'b', 'c', 'd']
+    const r = editCoeff(this.cxVals[this.cxField], v)
+    if (r === 'NEXT') {
+      const i = order.indexOf(this.cxField)
+      this.cxField = order[(i + 1) % order.length]
+      return
+    }
+    this.cxVals[this.cxField] = r
+    this.cxSyncFields(); this.cxSolve()
+  },
+  // —— 韦达定理 · 弦长（2026-11-15 新增）——
+  vtSyncFields() {
+    const v = this.vtVals
+    this.vtFieldDefs1 = [{ key: 'a', label: 'a', val: v.a }, { key: 'b', label: 'b', val: v.b }, { key: 'c', label: 'c', val: v.c }]
+    this.vtFvPx = fvPxOf([v.a, v.b, v.c, v.k], true)
+  },
+  vtFocus(k) { this.buzz(); this.vtField = k },
+  vtSolve() {
+    const v = this.vtVals
+    const nums = {}
+    for (const k of ['a', 'b', 'c', 'k']) {
+      const s = v[k]
+      const num = parseCoeff(s)
+      if (s === '' || isNaN(num)) { this.vtLines = ['有格子没输对']; return }
+      nums[k] = num
+    }
+    const r = calc2.vietaOf(nums.a, nums.b, nums.c, nums.k)
+    if (r.error) { this.vtLines = [r.error]; return }
+    const line = function (label, f) { return label + ' ' + (f.exact ? '= ' : '≈ ') + f.t }
+    const lines = []
+    if (isFinite(r.disc)) lines.push(line('Δ', fmtVal(r.disc)))
+    else lines.push('Δ 太大（下面的量还能看）')
+    lines.push(isFinite(r.sum) ? line('x1+x2', fmtVal(r.sum)) : 'x1+x2 太大了')
+    lines.push(isFinite(r.prod) ? line('x1x2', fmtVal(r.prod)) : 'x1x2 太大了')
+    if (r.discNeg) lines.push('Δ < 0：不相交，没有弦')
+    else {
+      lines.push(isFinite(r.diffAbs) ? line('|x1−x2|', fmtVal(r.diffAbs)) : '|x1−x2| 太大了')
+      lines.push(isFinite(r.chord) ? line('弦长', fmtVal(r.chord)) : '弦长 太大了')
+    }
+    this.vtLines = lines
+  },
+  vtPad(v) {
+    this.buzz()
+    const order = ['a', 'b', 'c', 'k']
+    const r = editCoeff(this.vtVals[this.vtField], v)
+    if (r === 'NEXT') {
+      const i = order.indexOf(this.vtField)
+      this.vtField = order[(i + 1) % order.length]
+      return
+    }
+    this.vtVals[this.vtField] = r
+    this.vtSyncFields(); this.vtSolve()
   }
 }
 </script>
@@ -819,6 +1238,7 @@ export default {
 .top-btn-t { font-size: 15px; color: #5F7E99; }
 .bar { width: 336px; height: 52px; flex-direction: row; align-items: center; padding-left: 10px; padding-right: 10px; position: relative; }
 .bbtn { height: 44px; border-radius: 22px; background-color: #FFFFFF; border: 1px solid #D8DEE7; padding-left: 16px; padding-right: 16px; align-items: center; justify-content: center; }
+.bbtn-s { padding-left: 10px; padding-right: 10px; }
 .bar-sp { flex-grow: 1; height: 1px; }
 .bbtn-ghost { height: 44px; padding-left: 16px; padding-right: 16px; align-items: center; justify-content: center; }
 .bar-btn { font-size: 17px; color: #5F7E99; }
@@ -938,6 +1358,13 @@ export default {
 .key-sys { height: 34px; }
 .q-line { font-size: 19px; color: #232A33; margin-bottom: 3px; line-height: 22px; padding-left: 6px; lines: 1; text-overflow: ellipsis; }
 .q-line-s { font-size: 17px; line-height: 20px; margin-bottom: 2px; }
+.q-line-t { font-size: 16px; line-height: 19px; margin-bottom: 2px; }
+.q-res-t { height: 118px; }
+.q-res-v { height: 114px; }
+.key.key-t2 { height: 33px; }
+.q-fields-c { margin-top: 3px; }
+.q-field-dt { width: 88px; }
+.vt-hint { align-self: center; }
 .plot-btn-row { width: 336px; align-items: center; margin-top: 3px; margin-bottom: 3px; }
 .plot-btn { height: 30px; border-radius: 17px; background-color: #7A93AC; padding-left: 18px; padding-right: 18px; align-items: center; justify-content: center; }
 .plot-btn-t { font-size: 16px; color: #FFFFFF; font-weight: bold; }

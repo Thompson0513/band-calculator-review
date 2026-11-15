@@ -434,10 +434,152 @@ function statsOf(xs) {
   if (!isFinite(meanV)) return { error: '数字太大，超出精确计算范围' }
   const popVar = M2 / n
   const sampVar = n >= 2 ? M2 / (n - 1) : null
+  // 中位数 / 众数 / 极差（2026-11-15 统计补全，用户点名）：中位数偶数
+  // 个时取中间两数均值，用 a + (b−a)/2 防 (a+b) 溢出；众数按双精度精
+  // 确相等计数（输入多为课本小数），全都只出现一次时为 null（无众数）；
+  // 极差 = 最大 − 最小，跨 ±1.7e308 时真值超双精度、原样返回 Infinity
+  // 由页面单独标「太大」，不连坐其他统计量。
+  const srt = xs.slice().sort(function (p, q) { return p - q })
+  const mid = n >> 1
+  const median = n % 2 === 1 ? srt[mid] : srt[mid - 1] + (srt[mid] - srt[mid - 1]) / 2
+  const freq = new Map()
+  for (const v of xs) freq.set(v, (freq.get(v) || 0) + 1)
+  let maxF = 0
+  for (const cntF of freq.values()) if (cntF > maxF) maxF = cntF
+  let modes = null
+  if (maxF > 1) {
+    modes = []
+    for (const ent of freq) if (ent[1] === maxF) modes.push(ent[0])
+    modes.sort(function (p, q) { return p - q })
+  }
   return {
     type: 'ok', n: n, mean: meanV,
     popVar: popVar, popSd: Math.sqrt(popVar),
-    sampVar: sampVar, sampSd: sampVar === null ? null : Math.sqrt(sampVar)
+    sampVar: sampVar, sampSd: sampVar === null ? null : Math.sqrt(sampVar),
+    median: median, modes: modes, range: srt[n - 1] - srt[0]
+  }
+}
+
+// 分布列期望与方差（2026-11-15 新增，用户点名）：pairs 为 [x, p] 数组。
+// 先验概率合法性（0 ≤ p ≤ 1）与 Σp = 1（课本数据的小数加总误差容差
+// 1e-9，超了明确报错、不静默归一化——Σp 是否为 1 本就是要核对的）。
+// 期望用 Kahan 补偿求和；方差用两遍法 Σp(x−E)²，不用 E(X²)−E²——
+// 方差远小于期望平方时后者灾难性相消。
+function distOf(pairs) {
+  if (!Array.isArray(pairs) || pairs.length === 0) return { error: '先加至少一组取值和概率' }
+  let sp = 0
+  for (const pr of pairs) {
+    if (!isFinite(pr[0]) || !isFinite(pr[1])) return { error: '有数据不对' }
+    if (pr[1] < 0 || pr[1] > 1) return { error: '概率要在 0 到 1 之间' }
+    sp += pr[1]
+  }
+  if (Math.abs(sp - 1) > 1e-9) return { error: '概率之和要等于 1', psum: sp }
+  let E = 0, comp = 0
+  for (const pr of pairs) {
+    const t = pr[0] * pr[1]
+    if (!isFinite(t)) return { error: '数字太大，超出精确计算范围' }
+    const y = t - comp
+    const s = E + y
+    comp = (s - E) - y
+    E = s
+    if (!isFinite(E)) return { error: '数字太大，超出精确计算范围' }
+  }
+  let D = 0
+  comp = 0
+  for (const pr of pairs) {
+    const dv = pr[0] - E
+    const t = pr[1] * dv * dv
+    if (!isFinite(t)) return { error: '数字太大，超出精确计算范围' }
+    const y = t - comp
+    const s = D + y
+    comp = (s - D) - y
+    D = s
+    if (!isFinite(D)) return { error: '数字太大，超出精确计算范围' }
+  }
+  if (D < 0) D = 0
+  return { type: 'ok', n: pairs.length, E: E, D: D, sd: Math.sqrt(D) }
+}
+
+// 向量运算（2026-11-15 新增，用户点名）：a、b 为等长分量数组（2 或
+// 3）。数量积与模长都按最大分量归一化再算——分量 1e200 时直算平方
+// 必溢出，归一化后量级贴着真值；归一化数量积恰为 0 时点积就是 0
+// （抵消殆尽），别让 ∞·0 冒充 NaN。零向量没有夹角（angle 为 null）。
+function vecOf(a, b) {
+  for (const v of a.concat(b)) if (!isFinite(v)) return { error: '有分量不对' }
+  const dim = a.length
+  let M = 0
+  for (const v of a.concat(b)) M = Math.max(M, Math.abs(v))
+  const sum = [], diff = []
+  for (let i = 0; i < dim; i++) { sum.push(a[i] + b[i]); diff.push(a[i] - b[i]) }
+  if (M === 0) return { type: 'ok', dot: 0, magA: 0, magB: 0, sum: sum, diff: diff, angle: null }
+  const an = a.map(function (v) { return v / M }), bn = b.map(function (v) { return v / M })
+  let sn = 0, sa = 0, sb = 0
+  for (let i = 0; i < dim; i++) { sn += an[i] * bn[i]; sa += an[i] * an[i]; sb += bn[i] * bn[i] }
+  const dot = sn === 0 ? 0 : M * (M * sn)
+  const magA = M * Math.sqrt(sa), magB = M * Math.sqrt(sb)
+  let angle = null
+  if (magA > 0 && magB > 0) {
+    let cs = sn / (Math.sqrt(sa) * Math.sqrt(sb))
+    if (cs > 1) cs = 1
+    if (cs < -1) cs = -1
+    angle = Math.acos(cs) * 180 / Math.PI
+  }
+  return { type: 'ok', dot: dot, magA: magA, magB: magB, sum: sum, diff: diff, angle: angle }
+}
+
+// 复数四则与模（2026-11-15 新增，用户点名）：z1 = [a, b]、z2 = [c, d]
+// （实部、虚部）。除法用按分母最大分量缩放的稳定式（Smith 口径），
+// 避免 c²+d² 在分量 1e200 时先溢出；除数为 0 时 div 为 null。模长同
+// 样按最大分量归一化。
+function cplxOps(z1, z2) {
+  const a = z1[0], b = z1[1], c = z2[0], d = z2[1]
+  if (![a, b, c, d].every(isFinite)) return { error: '有数不对' }
+  let div = null
+  if (c !== 0 || d !== 0) {
+    if (Math.abs(c) >= Math.abs(d)) {
+      const r = d / c, den = c + d * r
+      div = [(a + b * r) / den, (b - a * r) / den]
+    } else {
+      const r = c / d, den = c * r + d
+      div = [(a * r + b) / den, (b * r - a) / den]
+    }
+  }
+  const mag = function (x, y) {
+    const m = Math.max(Math.abs(x), Math.abs(y))
+    if (m === 0) return 0
+    const s = Math.min(Math.abs(x), Math.abs(y)) / m
+    return m * Math.sqrt(1 + s * s)
+  }
+  return {
+    type: 'ok',
+    add: [a + c, b + d], sub: [a - c, b - d],
+    mul: [a * c - b * d, a * d + b * c], div: div,
+    mag1: mag(a, b), mag2: mag(c, d)
+  }
+}
+
+// 韦达定理与弦长（2026-11-15 新增，用户点名）：直线 y = kx + m 与圆
+// 锥曲线联立后的一元二次 ax² + bx + c = 0（a ≠ 0），x1、x2 为交点横
+// 坐标。判别式按最大系数归一化判符号；|x1−x2| = √Δ/|a| 用归一化量
+// 直接算（√dn/|an|，两边同除缩放因子约掉），不先还原 Δ 再开方；弦
+// 长 = √(1+k²)·|x1−x2|，√(1+k²) 用稳定式防 k² 溢出。Δ 本身可能溢
+// 出成 Infinity（系数 1e200 量级），原样返回由页面单独处理。
+function vietaOf(a, b, c, k) {
+  if (![a, b, c, k].every(isFinite)) return { error: '有数不对' }
+  if (a === 0) return { error: 'a 不能是 0（不是二次方程）' }
+  const sc = Math.max(Math.abs(a), Math.abs(b), Math.abs(c))
+  const an = a / sc, bn = b / sc, cn = c / sc
+  const dn = bn * bn - 4 * an * cn
+  let diffAbs = null, chord = null
+  if (dn >= 0) {
+    diffAbs = Math.sqrt(dn) / Math.abs(an)
+    const ak = Math.abs(k)
+    const hyp = ak >= 1 ? ak * Math.sqrt(1 + (1 / ak) * (1 / ak)) : Math.sqrt(1 + ak * ak)
+    chord = hyp * diffAbs
+  }
+  return {
+    type: 'ok', disc: sc * sc * dn, discNeg: dn < 0,
+    sum: -b / a, prod: c / a, diffAbs: diffAbs, chord: chord
   }
 }
 
@@ -446,5 +588,9 @@ export default {
   permComb: permComb,
   seqSolve: seqSolve,
   solveTriangle: solveTriangle,
-  statsOf: statsOf
+  statsOf: statsOf,
+  distOf: distOf,
+  vecOf: vecOf,
+  cplxOps: cplxOps,
+  vietaOf: vietaOf
 }

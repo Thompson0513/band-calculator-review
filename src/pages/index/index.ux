@@ -1448,7 +1448,11 @@ export default {
       { id: 'law', ico: '弦', name: '正弦 · 余弦定理', desc: '任意三角形，填任意三个量' },
       { id: 'perm', ico: '排', name: '排列组合', desc: 'A(n,r) 与 C(n,r)，整数精确算' },
       { id: 'seq', ico: '列', name: '等差 · 等比数列', desc: '填首项与公差 / 公比，求项与和' },
-      { id: 'stats', ico: '均', name: '数据统计', desc: '平均数 · 方差 · 标准差' },
+      { id: 'stats', ico: '均', name: '数据统计', desc: '平均数 · 中位数 · 众数 · 方差' },
+      { id: 'dist', ico: '期', name: '分布列', desc: '期望 E(X) · 方差 D(X)' },
+      { id: 'vec', ico: '向', name: '向量运算', desc: '数量积 · 模 · 夹角' },
+      { id: 'cplx', ico: 'i', name: '复数运算', desc: '四则运算 · 模' },
+      { id: 'vieta', ico: '韦', name: '韦达 · 弦长', desc: '联立方程的根与弦长' },
       { id: 'history', ico: '≡', name: '历史记录', desc: '最近 5 条，带时间，点一条接着算' }
     ],
     solverMenu: [
@@ -1798,7 +1802,7 @@ export default {
     else if (id === 'gcd') { this.view = 'gcd'; this.gcdSolve() }
     else if (id === 'tri') { this.view = 'tri'; this.triSolve() }
     else if (id === 'circ') { this.view = 'circ'; this.circSolve() }
-    else if (id === 'rtri' || id === 'law' || id === 'perm' || id === 'seq' || id === 'stats') { this.navTool(id) }
+    else if (id === 'rtri' || id === 'law' || id === 'perm' || id === 'seq' || id === 'stats' || id === 'dist' || id === 'vec' || id === 'cplx' || id === 'vieta') { this.navTool(id) }
     else if (id === 'history') { this.view = 'history' }
   },
   navTool(id) {
