@@ -257,7 +257,8 @@ ok('4h 落点：abs 透传 dirty 在位', calcSrc.includes("tk.v === 'abs' ? arg
   // 页面级翻转（原 1.5.6 D 组页面钉注已同步修订）
   const inst = makeInst()
   inst.qa = '1'; inst.qb = '1' + '0'.repeat(200); inst.qc = '1'; inst.quadSolve()
-  eq('5e 页面 (1,1e200,1) 显示两根', JSON.stringify(inst.qLines), JSON.stringify(['判别式 Δ = 1 > 0', 'x1 = −1×10²⁰⁰', 'x2 = −1×10⁻²⁰⁰']))
+  // 【1.6.0 第十六轮复审修订】Δ 行改显示真 Δ 量级（discStr ≈ 1×10⁴⁰⁰），不再用归一化值 1 冒充 Δ；两根期望不变。
+  eq('5e 页面 (1,1e200,1) 显示两根', JSON.stringify(inst.qLines), JSON.stringify(['判别式 Δ ≈ 1×10⁴⁰⁰ > 0', 'x1 = −1×10²⁰⁰', 'x2 = −1×10⁻²⁰⁰']))
   eq('5e 页面可看图象', inst.qCanPlot, true)
 }
 // 归一化后仍真溢出的照旧报错（口径不变）

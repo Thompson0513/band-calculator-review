@@ -181,10 +181,11 @@ const ckOk = (label, cond, extra) => {
   ck('F5 fmtSide 1/512 用 =', F2.fmtSide(1 / 512).t, '1/512 = 0.001953125')
   ck('F5 fmtSide 5/2 用 =', F2.fmtSide(2.5).t, '5/2 = 2.5')
   ck('F5 fmtSide 1/3 用 ≈', F2.fmtSide(0.3333333334).t, '1/3 ≈ 0.333333333333')
-  ck('F5 fmtVal 1/8 用 =', F2.fmtVal(1 / 8), '1/8 = 0.125')
+  // 【1.6.0 第十六轮复审修订】fmtVal 改回 {t, exact} 结构（防近似值冒充精确），断言同步改查 t 与 exact。
+  ck('F5 fmtVal 1/8 用 =', F2.fmtVal(1 / 8).t + '|exact=' + F2.fmtVal(1 / 8).exact, '1/8 = 0.125|exact=true')
   ck('F6 fmtSide 大整数无 e', F2.fmtSide(1.7179250691067045e47).t.indexOf('e+') < 0, true)
   ck('F6 fmtSide 大整数 ×10', F2.fmtSide(1.7179250691067045e47).t, '1.71792506911×10⁴⁷')
-  ck('F6 fmtVal 大整数 ×10', F2.fmtVal(1.7179250691067045e47), '1.71792506911×10⁴⁷')
+  ck('F6 fmtVal 大整数 ×10', F2.fmtVal(1.7179250691067045e47).t + '|exact=' + F2.fmtVal(1.7179250691067045e47).exact, '1.71792506911×10⁴⁷|exact=true')
   ck('F6 fmtSide 小整数原样', F2.fmtSide(123456).t, '123456')
   const s = makeInst(def2); s.sqa = '1'; s.sqx = '1/2'; s.sqn = '10'; s.sqKind = 'gp'; s.sqSolve()
   ck('F5 数列等比行用 =', JSON.stringify(s.sqLines), JSON.stringify(['第 10 项 = 1/512 = 0.001953125', '前 10 项和 = 1023/512 = 1.998046875']))

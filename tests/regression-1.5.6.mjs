@@ -197,7 +197,8 @@ eq('D 守卫 普通方程 type', r.type, 'two'); approx('D 守卫 普通根1', r
 {
 const inst = makeInst()
 inst.qa = '1'; inst.qb = '1' + '0'.repeat(200); inst.qc = '1'; inst.quadSolve()
-eq('D【1.5.20 修订】二次方程页 b=1e200 显示两根（旧期望：显示报错行）', JSON.stringify(inst.qLines), JSON.stringify(['判别式 Δ = 1 > 0', 'x1 = −1×10²⁰⁰', 'x2 = −1×10⁻²⁰⁰']))
+// 【1.6.0 第十六轮复审再修订】Δ 行不再显示归一化值 1，改显示真 Δ 量级（discStr），两根期望不变。
+eq('D【1.5.20 修订】二次方程页 b=1e200 显示两根（旧期望：显示报错行）', JSON.stringify(inst.qLines), JSON.stringify(['判别式 Δ ≈ 1×10⁴⁰⁰ > 0', 'x1 = −1×10²⁰⁰', 'x2 = −1×10⁻²⁰⁰']))
 eq('D【1.5.20 修订】b=1e200 有根时可看图象（旧期望：不可看图象）', inst.qCanPlot, true)
 }
 

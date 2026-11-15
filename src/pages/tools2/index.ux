@@ -163,11 +163,32 @@ function coeffSrc(s) {
 }
 function parseCoeff(s) {
   if (s === '' || s === '-') return NaN
+  // 2026-11-15 第十六轮复审：快路径（parseFloat）会把超安全整数静默舍
+  // 入——9007199254740993 → 9007199254740992，一次方程因此误判无解；而
+  // evaluate 对这类字面量抛 precision。守卫只拦「有效数字超过 15 位、
+  // 量级又在 1e21 以内」的数字段（全应用整数精确口径的范围）：纯数字/
+  // 分数落到 evaluate 统一判定；科学计数法把尾数展开成整数串与读数
+  // 逐字比对，对不上即 NaN。≥1e21 是既定的浮点近似区（1.5.20 钉死：
+  // 系数 1 后跟 200 个 0 照常出根），不拦。
+  const digitsOf = function (t) { return t.replace(/[-.]/g, '').replace(/^0+/, '') }
+  const needsCheck = function (t) { return digitsOf(t).length > 15 && Math.abs(parseFloat(t)) < 1e21 }
   // 2026-11-15 自查 F11：整串就是科学计数法时按科学计数法读（1e21 → 10²¹），
   // 与主键盘 evaluate 的分词口径一致。'2e'（2×e）、'e2'（e×2）仍走欧拉
   // 读法（regression-1.6.0 §1d 钉死）；带运算符的长式子也不动。
-  if (/^-?(\d+(\.\d*)?|\.\d+)e[+-]?\d+$/i.test(s)) return parseFloat(s)
-  if (/^-?(\d+(\.\d*)?|\.\d+)(\/\d+(\.\d*)?|\/\.\d+)?$/.test(s)) {
+  if (/^-?(\d+(\.\d*)?|\.\d+)e[+-]?\d+$/i.test(s)) {
+    const mant = s.split(/e/i)[0]
+    if (!needsCheck(mant)) return parseFloat(s)
+    const v = parseFloat(s)
+    if (Math.abs(v) >= 1e21) return v
+    const neg = mant.charAt(0) === '-'
+    const md = neg ? mant.slice(1) : mant
+    const intLen = md.indexOf('.') >= 0 ? md.indexOf('.') : md.length
+    const digs = md.replace('.', '').replace(/^0+/, '')
+    const point = intLen + parseInt(s.split(/e/i)[1], 10)
+    if (point < digs.length) return v
+    return String(Math.abs(v)) === digs + '0'.repeat(point - digs.length) ? v : NaN
+  }
+  if (/^-?(\d+(\.\d*)?|\.\d+)(\/\d+(\.\d*)?|\/\.\d+)?$/.test(s) && !s.split('/').some(needsCheck)) {
     if (s.indexOf('/') >= 0) {
       const p = s.split('/')
       if (p.length !== 2) return NaN
@@ -251,7 +272,9 @@ function angSeg(v) {
 }
 function fmtSide(v) {
   const f = calc.toFraction(v)
-  if (f) {
+  // 2026-11-15 第十六轮复审：d===1 的「整数」也必须过 fracIsExact——
+  // toFraction 的连分容差会把 2.00000000001 收成整数 2 冒充精确。
+  if (f && (f.d !== 1 || calc.fracIsExact(v, f))) {
     const s = f.d === 1 ? intTxt(f.n) : intTxt(f.n) + '/' + f.d
     // 整数不再缀小数（FD 的千分位写法会让同一数变成两种样子）
     // 2026-11-15 自查 F5：分数与小数之间的连接号按是否精确选 = / ≈，
@@ -259,7 +282,13 @@ function fmtSide(v) {
     return { t: f.d === 1 ? s : s + (calc.fracIsExact(v, f) ? ' = ' : ' ≈ ') + FD(f.n / f.d), exact: true }
   }
   const f2 = calc.toFraction(v * v)
-  if (f2 && f2.n > 0) {
+  // 2026-11-15 第十六轮复审：根式分支也要验精确——v² 的近似分数（如
+  // 边 1.00000000001 的斜边平方 ≈ 2.00000000003）不许化成 √2 冒充精确
+  // 根式。判定不用 fracIsExact：它的 d===1 分支只认双精度全等，而真
+  // √2 的平方是 2.0000000000000004（1 ulp 计算误差）必然误杀；这里用
+  // F3 的 12 位口径（分数值与 v² 在 12 位有效数字下相等才算精确）。
+  const vv = v * v
+  if (f2 && f2.n > 0 && (f2.n / f2.d === vv || parseFloat((f2.n / f2.d).toPrecision(12)) === calc.cleanNum(vv))) {
     const sq = calc.simplifySqrt(f2.n * f2.d)
     if (!sq.error && sq.rad !== 1) {
       let cn = sq.coef, cd = f2.d
@@ -271,14 +300,18 @@ function fmtSide(v) {
   }
   return { t: FD(v), exact: false }
 }
+// 2026-11-15 第十六轮复审：fmtVal 改回 {t, exact} 结构（与 fmtSide
+// 一致）——旧版回裸字符串、sqSolve 无条件拼「=」，把舍入小数（如等比
+// 数列 Sn = 4.41421356237）标成精确等号；且 d===1 分支不查精确性，
+// 2.00000000001 会被显示成整数 2。exact=false 时调用方必须用 ≈。
 function fmtVal(v) {
   const f = calc.toFraction(v)
-  if (f) {
+  if (f && (f.d !== 1 || calc.fracIsExact(v, f))) {
     const s = f.d === 1 ? intTxt(f.n) : intTxt(f.n) + '/' + f.d
     // 2026-11-15 自查 F5：同 fmtSide，精确分数用 =（见上）。
-    return f.d === 1 ? s : s + (calc.fracIsExact(v, f) ? ' = ' : ' ≈ ') + FD(f.n / f.d)
+    return { t: f.d === 1 ? s : s + (calc.fracIsExact(v, f) ? ' = ' : ' ≈ ') + FD(f.n / f.d), exact: true }
   }
-  return FD(v)
+  return { t: FD(v), exact: false }
 }
 // 2026-11-15 自查 F6：整数 < 1e21 保持无逗号原样；≥1e21 时 JS 的 String 会
 // 漏出原始 e 记法（如 1.7179250691067045e+47），改走 12 位课本式 ×10 上标。
@@ -354,10 +387,13 @@ export default {
   onInit() {
     // 目标工具优先走路由参数：参数在页面创建时同步注入，首帧即直达，
     // 不闪本页菜单（2026-11-15 真机反馈修复）。下面的存储读是参数缺失时的兜底。
-    if (this.tool === 'rtri' || this.tool === 'law' || this.tool === 'perm' || this.tool === 'seq') this.view = this.tool
+    // 2026-11-15 第十六轮复审：参数有效时完全跳过存储读——旧写法无条件
+    // 读，存储里若残留旧值会把参数指定的页面覆盖掉（异步竞态）。
+    const paramTool = this.tool === 'rtri' || this.tool === 'law' || this.tool === 'perm' || this.tool === 'seq'
+    if (paramTool) this.view = this.tool
     this.fetchDeviceId()
     const self = this
-    try {
+    if (!paramTool) try {
       storage.get({
         key: 'calc_tool_nav',
         success: function (data) {
@@ -551,17 +587,23 @@ export default {
     if (n > 999) { this.pmLines = ['n 太大了（最多 999）']; return }
     const res = calc2.permComb(n, r)
     if (res.error) { this.pmLines = [res.error]; return }
-    if (!isFinite(res.A) || !isFinite(res.C)) { this.pmLines = ['数字太大，超出精确计算范围']; return }
-    const fa = res.aExact && Math.abs(res.A) < 1e16 ? String(res.A) : FD(res.A)
+    if (!isFinite(res.C)) { this.pmLines = ['数字太大，超出精确计算范围']; return }
     const fc = res.cExact && Math.abs(res.C) < 1e16 ? String(res.C) : FD(res.C)
     // 2026-11-15 自查 F9：行超 30 字会被 .q-line（312px）省略号截掉末尾数字，
     // 改 10 位课本式 ×10 上标缩短（如 A(30,15) ≈ 2.028432049×10²⁰，28 字放得下）。
     const sci10 = function (x) { return calc.sciStr(x.toPrecision(10)) }
-    const la = 'A(' + n + ',' + r + ') ' + (res.aExact ? '= ' : '≈ ') + fa
-    const lc = 'C(' + n + ',' + r + ') ' + (res.cExact ? '= ' : '≈ ') + fc
+    // 2026-11-15 第十六轮复审（续）：A 溢出（aOf）只标 A 行，C 行照常。
+    let la
+    if (res.aOf) la = 'A(' + n + ',' + r + ') 太大了，超出精确计算范围'
+    else {
+      const fa = res.aExact && Math.abs(res.A) < 1e16 ? String(res.A) : FD(res.A)
+      la = 'A(' + n + ',' + r + ') ' + (res.aExact ? '= ' : '≈ ') + fa
+      if (la.length > 30) la = 'A(' + n + ',' + r + ') ' + (res.aExact ? '= ' : '≈ ') + sci10(res.A)
+    }
+    const lc0 = 'C(' + n + ',' + r + ') ' + (res.cExact ? '= ' : '≈ ') + fc
     this.pmLines = [
-      la.length > 30 ? 'A(' + n + ',' + r + ') ' + (res.aExact ? '= ' : '≈ ') + sci10(res.A) : la,
-      lc.length > 30 ? 'C(' + n + ',' + r + ') ' + (res.cExact ? '= ' : '≈ ') + sci10(res.C) : lc
+      la,
+      lc0.length > 30 ? 'C(' + n + ',' + r + ') ' + (res.cExact ? '= ' : '≈ ') + sci10(res.C) : lc0
     ]
   },
   pmPad(v) {
@@ -594,7 +636,8 @@ export default {
     const r = calc2.seqSolve(this.sqKind, a1, x, n)
     if (r.error) { this.sqLines = [r.error]; return }
     if (!isFinite(r.an) || !isFinite(r.Sn)) { this.sqLines = ['数字太大，超出精确计算范围']; return }
-    this.sqLines = ['第 ' + n + ' 项 = ' + fmtVal(r.an), '前 ' + n + ' 项和 = ' + fmtVal(r.Sn)]
+    const fa = fmtVal(r.an), fs = fmtVal(r.Sn)
+    this.sqLines = ['第 ' + n + ' 项 ' + (fa.exact ? '= ' : '≈ ') + fa.t, '前 ' + n + ' 项和 ' + (fs.exact ? '= ' : '≈ ') + fs.t]
   },
   sqPad(v) {
     this.buzz()

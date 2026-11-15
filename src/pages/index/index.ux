@@ -651,11 +651,32 @@ function coeffSrc(s) {
 }
 function parseCoeff(s) {
   if (s === '' || s === '-') return NaN
+  // 2026-11-15 第十六轮复审：快路径（parseFloat）会把超安全整数静默舍
+  // 入——9007199254740993 → 9007199254740992，一次方程因此误判无解；而
+  // evaluate 对这类字面量抛 precision。守卫只拦「有效数字超过 15 位、
+  // 量级又在 1e21 以内」的数字段（全应用整数精确口径的范围）：纯数字/
+  // 分数落到 evaluate 统一判定；科学计数法把尾数展开成整数串与读数
+  // 逐字比对，对不上即 NaN。≥1e21 是既定的浮点近似区（1.5.20 钉死：
+  // 系数 1 后跟 200 个 0 照常出根），不拦。
+  const digitsOf = function (t) { return t.replace(/[-.]/g, '').replace(/^0+/, '') }
+  const needsCheck = function (t) { return digitsOf(t).length > 15 && Math.abs(parseFloat(t)) < 1e21 }
   // 2026-11-15 自查 F11：整串就是科学计数法时按科学计数法读（1e21 → 10²¹），
   // 与主键盘 evaluate 的分词口径一致。'2e'（2×e）、'e2'（e×2）仍走欧拉
   // 读法（regression-1.6.0 §1d 钉死）；带运算符的长式子也不动。
-  if (/^-?(\d+(\.\d*)?|\.\d+)e[+-]?\d+$/i.test(s)) return parseFloat(s)
-  if (/^-?(\d+(\.\d*)?|\.\d+)(\/\d+(\.\d*)?|\/\.\d+)?$/.test(s)) {
+  if (/^-?(\d+(\.\d*)?|\.\d+)e[+-]?\d+$/i.test(s)) {
+    const mant = s.split(/e/i)[0]
+    if (!needsCheck(mant)) return parseFloat(s)
+    const v = parseFloat(s)
+    if (Math.abs(v) >= 1e21) return v
+    const neg = mant.charAt(0) === '-'
+    const md = neg ? mant.slice(1) : mant
+    const intLen = md.indexOf('.') >= 0 ? md.indexOf('.') : md.length
+    const digs = md.replace('.', '').replace(/^0+/, '')
+    const point = intLen + parseInt(s.split(/e/i)[1], 10)
+    if (point < digs.length) return v
+    return String(Math.abs(v)) === digs + '0'.repeat(point - digs.length) ? v : NaN
+  }
+  if (/^-?(\d+(\.\d*)?|\.\d+)(\/\d+(\.\d*)?|\/\.\d+)?$/.test(s) && !s.split('/').some(needsCheck)) {
     if (s.indexOf('/') >= 0) {
       const p = s.split('/')
       if (p.length !== 2) return NaN
@@ -861,6 +882,12 @@ function monoStr(m) {
   return (m.qn < 0 ? '−' : '') + out
 }
 function FD(x) { return calc.formatDisplay(x) }
+// 2026-11-15 第十六轮复审：真 Δ 溢出双精度时 solveQuad 另给 discStr
+// （如 4×10⁴⁰⁰），优先显示它，别把归一化值（如 4）冒充 Δ。
+function discLine(r, verdict) {
+  if (r.discStr) return '判别式 Δ ' + (r.discApprox ? '≈ ' : '= ') + r.discStr + verdict
+  return '判别式 Δ ' + calc.eqSign(r.disc) + ' ' + fitResStr(r.disc, 13) + verdict
+}
 function fitResStr(v, cap) {
   let s = calc.formatDisplay(v)
   if (s.length <= cap) return s
@@ -1244,10 +1271,14 @@ function autoRange(type, V) {
     const a = V.a, b = V.b, c = V.c
     const xv = -b / (2 * a)
     let need = Math.abs(xv) + 3
-    const disc = b * b - 4 * a * c
+    // 2026-11-15 第十六轮复审：判别式按归一化系数算（根与缩放无关），
+    // 防 b²−4ac 溢出后 disc 判读失效、图象范围算错。
+    const sc = Math.max(Math.abs(a), Math.abs(b), Math.abs(c)) || 1
+    const a1 = a / sc, b1 = b / sc, c1 = c / sc
+    const disc = b1 * b1 - 4 * a1 * c1
     if (disc > 0) {
       const s = Math.sqrt(disc)
-      need = Math.max(need, Math.abs((-b + s) / (2 * a)), Math.abs((-b - s) / (2 * a))) + 1
+      need = Math.max(need, Math.abs((-b1 + s) / (2 * a1)), Math.abs((-b1 - s) / (2 * a1))) + 1
     }
     return snap(Math.min(need, 64))
   }
@@ -1490,8 +1521,9 @@ export default {
     this.buildSciKeys()
     this.loadHist()
     // 从第二页（pages/tools2）返回时直达工具箱（跨页 replace 导航的回程约定）
+    // 2026-11-15 第十六轮复审：参数已指定回工具箱时跳过存储读，防旧值竞态。
     const selfBt = this
-    try {
+    if (this.backto !== 'tools') try {
       storage.get({
         key: 'calc_back_to',
         success: function (data) {
@@ -2138,7 +2170,7 @@ export default {
     const F = function (x) { return calc.formatDisplay(x) }
     if (r.type === 'two') {
       const rads = quadRadStrs(a, b, c, r.x1, r.x2)
-      this.qLines = ['判别式 Δ ' + calc.eqSign(r.disc) + ' ' + fitResStr(r.disc, 13) + ' > 0',
+      this.qLines = [discLine(r, ' > 0'),
         rads ? radAnsStr('x1', r.x1, rads.x1, 28, rads.exact) : ansStr('x1', r.x1, 28),
         rads ? radAnsStr('x2', r.x2, rads.x2, 28, rads.exact) : ansStr('x2', r.x2, 28)]
     }
@@ -2147,7 +2179,7 @@ export default {
       const imRad = quadImRad(a, b, c, r.im)
       const cr1 = imRad ? cplxRadStr('x1', r, imRad, '+') : null
       const cr2 = imRad ? cplxRadStr('x2', r, imRad, '−') : null
-      this.qLines = ['判别式 Δ ' + calc.eqSign(r.disc) + ' ' + fitResStr(r.disc, 13) + ' < 0', '无实数根，复数根：', (cr1 && cr2) ? cr1 : cplxStr('x1', r, '+'), (cr1 && cr2) ? cr2 : cplxStr('x2', r, '−')]
+      this.qLines = [discLine(r, ' < 0'), '无实数根，复数根：', (cr1 && cr2) ? cr1 : cplxStr('x1', r, '+'), (cr1 && cr2) ? cr2 : cplxStr('x2', r, '−')]
     } else if (r.type === 'linear') this.qLines = ['a = 0，退化为一次方程', ansStr('x', r.x, 28)]
     else if (r.type === 'none') this.qLines = ['方程无解']
     else this.qLines = ['恒等式：无数个解']
@@ -2430,12 +2462,12 @@ export default {
       const head = fmtPolyFit(a, b, c)
       if (r.type === 'two') {
         const rads = quadRadStrs(a, b, c, r.x1, r.x2)
-        this.eqLines = [head, '判别式 Δ ' + calc.eqSign(r.disc) + ' ' + fitResStr(r.disc, 13) + ' > 0',
+        this.eqLines = [head, discLine(r, ' > 0'),
           rads ? radAnsStr('x1', r.x1, rads.x1, 28, rads.exact) : ansStr('x1', r.x1, 28),
           rads ? radAnsStr('x2', r.x2, rads.x2, 28, rads.exact) : ansStr('x2', r.x2, 28)]
       }
       else if (r.type === 'one') this.eqLines = [head, '判别式 Δ = 0（两根相等）', ansStr('x', r.x, 28)]
-      else if (r.type === 'complex') this.eqLines = [head, '判别式 Δ ' + calc.eqSign(r.disc) + ' ' + fitResStr(r.disc, 13) + ' < 0', '无实数根']
+      else if (r.type === 'complex') this.eqLines = [head, discLine(r, ' < 0'), '无实数根']
       else if (r.type === 'linear') this.eqLines = [head, ansStr('x', r.x, 28)]
       else if (r.type === 'none') this.eqLines = [head, '方程无解']
       else this.eqLines = [head, '恒等式：无数个解']
@@ -2573,7 +2605,19 @@ export default {
     if (isNaN(v)) { this.cLines = ['把半径填好就能算']; return }
     if (v <= 0) { this.cLines = ['半径要大于 0']; return }
     const C = 2 * Math.PI * v, Av = Math.PI * v * v
-    if (!isFinite(C) || !isFinite(Av)) { this.cLines = ['数字太大，超出精确计算范围']; return }
+    // 2026-11-15 第十六轮复审：周长、面积分别判——r = 1e200 时周长有限、
+    // 面积溢出，旧版一损俱损把周长也藏了；面积下溢成 0（r < 约 1e-162，
+    // 真值小于双精度最小数）时按对数拼课本式 ×10 串，不冒充 0。
+    if (!isFinite(C)) { this.cLines = ['数字太大，超出精确计算范围']; return }
+    if (!isFinite(Av)) { this.cLines = ['周长 ≈ ' + FD(C), '面积太大了，超出精确计算范围']; return }
+    if (Av === 0) {
+      const la = Math.log(Math.PI) / Math.LN10 + 2 * (Math.log(v) / Math.LN10)
+      const ex = Math.floor(la)
+      const mt = parseFloat(Math.pow(10, la - ex).toPrecision(12))
+      const sup = (ex < 0 ? '⁻' : '') + String(Math.abs(ex)).split('').map(function (ch) { return '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(ch)] }).join('')
+      this.cLines = ['周长 ≈ ' + FD(C), '面积 ≈ ' + mt + '×10' + sup]
+      return
+    }
     const m = parseMono(this.cr)
     if (m && m.qn > 0) {
       const cm = monoMul(m, { qn: 2, qd: 1, pi: 1, rad: 1 })
@@ -2601,24 +2645,25 @@ export default {
     if (kind === 'quad') {
       const a = parseCoeff0(this.qa), b = parseCoeff0(this.qb), c = parseCoeff0(this.qc)
       if (isNaN(a) || isNaN(b) || isNaN(c) || a === 0) return
-      const xv = -b / (2 * a), yv = a * xv * xv + b * xv + c
-      const disc = b * b - 4 * a * c
+      // 2026-11-15 第十六轮复审：交点改走 solveQuad 的归一化稳定路径——
+      // 旧版在这里直算 disc = b²−4ac，a = 1e200 时溢出成 Infinity、交点
+      // 显示「溢出、溢出」（方程页本身是对的）。顶点 y 用归一化系数算
+      // 后乘回（与缩放无关地还原），防 a·xv² 中间溢出。
+      const r = calc.solveQuad(a, b, c)
+      if (r.error) return
+      const xv = -b / (2 * a)
+      const mm = Math.max(Math.abs(a), Math.abs(b), Math.abs(c))
+      const yv = mm * ((a / mm) * xv * xv + (b / mm) * xv + (c / mm))
       const keyPts = [{ x: xv, y: yv }]
-      if (disc >= 0) {
-        const sq = Math.sqrt(disc)
-        keyPts.push({ x: (-b + sq) / (2 * a), y: 0 })
-        if (disc > 0) keyPts.push({ x: (-b - sq) / (2 * a), y: 0 })
-      }
+      if (r.type === 'two') { keyPts.push({ x: r.x1, y: 0 }); keyPts.push({ x: r.x2, y: 0 }) }
+      else if (r.type === 'one') keyPts.push({ x: r.x, y: 0 })
       const lines = [vertexLine(xv, yv), a > 0 ? '开口向上' : '开口向下']
-      if (disc > 0) {
-        const sq = Math.sqrt(disc)
-        const rr1 = (-b + sq) / (2 * a), rr2 = (-b - sq) / (2 * a)
+      if (r.type === 'two') {
         // 2026-11-15 自查 F1：交点行按 x1<x2 升序传根，与二次方程页一致
         //（quadRadStrs 按值配对根式，传升序后配对自动正确）。
-        const rLo = Math.min(rr1, rr2), rHi = Math.max(rr1, rr2)
-        lines.push(rootsLine(rLo, rHi, quadRadStrs(a, b, c, rLo, rHi)))
+        lines.push(rootsLine(r.x1, r.x2, quadRadStrs(a, b, c, r.x1, r.x2)))
       }
-      else if (disc === 0) lines.push('与 x 轴相切（一个交点）')
+      else if (r.type === 'one') lines.push('与 x 轴相切（一个交点）')
       else lines.push('与 x 轴没有交点')
       this.buildPlot({
         f: function (x) { return a * x * x + b * x + c },

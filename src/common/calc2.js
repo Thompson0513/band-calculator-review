@@ -27,11 +27,16 @@ function solveRightTri(k) {
   if (A != null && B == null) B = 90 - A
   if (B != null && A == null) A = 90 - B
   let x = a, y = b, z = c
-  if (x != null && y != null && z == null) z = Math.sqrt(x * x + y * y)
-  else if (x != null && z != null && y == null) { if (!(z > x)) return { error: '斜边 c 要比直角边长' }; y = Math.sqrt(z * z - x * x) }
-  else if (y != null && z != null && x == null) { if (!(z > y)) return { error: '斜边 c 要比直角边长' }; x = Math.sqrt(z * z - y * y) }
+  // 2026-11-15 第十六轮复审：平方直算会溢出/下溢——1e200 的平方是
+  // Infinity（校验变 NaN 比较、假通过）、1e-200 的平方下溢成 0（斜边算
+  // 成 0 还报成功）。全部改尺度归一化：斜边用 max 边缩放后开方；已知斜
+  // 边求直角边用 (z−x)(z+x) 的归一化乘积形（不开大数平方、无相消）。
+  if (x != null && y != null && z == null) { const m = Math.max(x, y); z = m * Math.sqrt((x / m) * (x / m) + (y / m) * (y / m)) }
+  else if (x != null && z != null && y == null) { if (!(z > x)) return { error: '斜边 c 要比直角边长' }; y = z * Math.sqrt(((z - x) / z) * ((z + x) / z)) }
+  else if (y != null && z != null && x == null) { if (!(z > y)) return { error: '斜边 c 要比直角边长' }; x = z * Math.sqrt(((z - y) / z) * ((z + y) / z)) }
   if (x != null && y != null && z != null) {
-    if (Math.abs(x * x + y * y - z * z) > 1e-6 * z * z) return { error: '三边不符合勾股定理' }
+    const xn = x / z, yn = y / z
+    if (Math.abs(xn * xn + yn * yn - 1) > 1e-6) return { error: '三边不符合勾股定理' }
     const AfromSides = rad2deg(Math.atan2(x, y))
     if (A != null && Math.abs(AfromSides - A) > 0.01) return { error: '填的量对不上' }
     if (A == null) { A = AfromSides; B = 90 - A }
@@ -51,21 +56,46 @@ function solveRightTri(k) {
 function permComb(n, r) {
   if (!Number.isInteger(n) || !Number.isInteger(r) || n < 0 || r < 0) return { error: 'n 和 r 要是非负整数' }
   if (r > n) return { error: 'r 不能大于 n' }
-  let A = 1, aExact = true
+  let A = 1, aExact = true, aOf = false
   for (let i = 0; i < r; i++) {
     A *= (n - i)
-    if (!isFinite(A)) return { error: '数字太大，超出精确计算范围' }
+    // 2026-11-15 第十六轮复审（续）：A 溢出不连坐 C——C(200,200)=1 这类
+    // C 完全可算的组合，旧版因 A=200! 溢出整单报错（全扫描 6561 组）。
+    // A 单独标 aOf 置 null，页面只把 A 行标超范围，C 行照常给。
+    if (!isFinite(A)) { aOf = true; A = null; break }
     if (A > 9007199254740991) aExact = false
   }
   let C = 1, cExact = true
-  for (let i = 1; i <= r; i++) {
-    C = C * (n - r + i) / i
+  // 2026-11-15 第十六轮复审：旧递推 C = C*(n-r+i)/i 先乘后除逐步积累
+  // 误差——C(56,27) 算出 7384942649010079（真值 ...080）还标 cExact；
+  // 全扫描 n≤999 中可精确表示的 17945 组里 6729 组数值错、45 组错标
+  // 精确。改：BigInt 精确递推（只用构造调用＋typeof 守卫，守运行时无
+  // 字面量口径）；无 BigInt 时 gcd 约分递推兜底（约分后每步皆整数、中
+  // 间值不超过最终结果，安全整数内必然精确）。
+  const rr = Math.min(r, n - r)
+  if (typeof BigInt === 'function') {
+    let bc = BigInt(1)
+    for (let i = 1; i <= rr; i++) bc = bc * BigInt(n - rr + i) / BigInt(i)
+    cExact = bc <= BigInt(9007199254740991)
+    C = Number(bc)
     if (!isFinite(C)) return { error: '数字太大，超出精确计算范围' }
-    if (C > 9007199254740991) cExact = false
+  } else {
+    const gcdI = function (p, q) { while (q) { const t = p % q; p = q; q = t } return p }
+    let cc = 1
+    for (let i = 1; i <= rr; i++) {
+      let num = n - rr + i, den = i
+      const g1 = gcdI(num, den); num /= g1; den /= g1
+      const g2 = gcdI(cc, den); cc /= g2; den /= g2
+      cc *= num
+      if (den !== 1) { cc /= den; cExact = false }
+      if (!isFinite(cc)) return { error: '数字太大，超出精确计算范围' }
+      if (cc > 9007199254740991) cExact = false
+    }
+    C = cc
   }
-  if (aExact && !Number.isInteger(A)) aExact = false
+  if (aExact && A !== null && !Number.isInteger(A)) aExact = false
   if (cExact && !Number.isInteger(C)) cExact = false
-  return { type: 'ok', A: A, C: C, aExact: aExact, cExact: cExact }
+  return { type: 'ok', A: A, C: C, aExact: aExact, cExact: cExact, aOf: aOf }
 }
 
 // 数列：kind = 'ap'（x 为公差）| 'gp'（x 为公比），求第 n 项与前 n 项和。
@@ -77,7 +107,20 @@ function seqSolve(kind, a1, x, n) {
     Sn = n * (a1 + an) / 2
   } else {
     an = a1 * Math.pow(x, n - 1)
-    Sn = x === 1 ? a1 * n : a1 * (Math.pow(x, n) - 1) / (x - 1)
+    // 2026-11-15 第十六轮复审：q 接近 1 时 (q^n − 1) 相消——q = 1+1e-12、
+    // n = 9999 的和算成 9999（真值 9999.000049989445）。q > 0.5 时改分治
+    // 累加 Σq^i（全正项、无相消、只用 Math.pow，不依赖 expm1/log1p 的
+    // 运行时支持面）：S(n) = S(n/2)·(1 + q^(n/2))（偶）/ S(n−1) + q^(n−1)（奇）。
+    if (x === 1) Sn = a1 * n
+    else if (x > 0.5) {
+      const sumPow = function (q, nn) {
+        if (nn === 1) return 1
+        if (nn % 2 === 0) { const h = sumPow(q, nn / 2); return h * (1 + Math.pow(q, nn / 2)) }
+        return sumPow(q, nn - 1) + Math.pow(q, nn - 1)
+      }
+      Sn = a1 * sumPow(x, n)
+    }
+    else Sn = a1 * (Math.pow(x, n) - 1) / (x - 1)
   }
   if (!isFinite(an) || !isFinite(Sn)) return { error: '数字太大，超出精确计算范围' }
   return { type: 'ok', an: an, Sn: Sn }
@@ -108,11 +151,18 @@ function solveTriangle(k) {
   function fromSSS(s) {
     // 余弦定理的边平方会溢出（1e200² = Infinity → NaN 角）：先归一化再算角，
     // 角度与边长缩放无关。
+    // 2026-11-15 第十六轮复审：角度改半角 atan2 形——旧 acos 形在参数近
+    // ±1 时精度全灭：(1,1,1e-8) 的小角被算成 0 后被兜底误杀、SAS 极小
+    // 夹角算出的第三边误差 15%。半角形 tan(A/2) = √((s−b)(s−c)/(s(s−a)))
+    // 对小角与近 180° 角都稳定（归一化边上求值，无溢出）。
     const sc = Math.max(s[0], s[1], s[2])
     const n = [s[0] / sc, s[1] / sc, s[2] / sc]
+    const hs = (n[0] + n[1] + n[2]) / 2
     const g = [0, 1, 2].map(function (i) {
       const j = (i + 1) % 3, m = (i + 2) % 3
-      return rad2deg(Math.acos(clampUnit((n[j] * n[j] + n[m] * n[m] - n[i] * n[i]) / (2 * n[j] * n[m]))))
+      const num = Math.sqrt(Math.max(0, (hs - n[j]) * (hs - n[m])))
+      const den = Math.sqrt(Math.max(0, hs * (hs - n[i])))
+      return 2 * rad2deg(Math.atan2(num, den))
     })
     return finish(s, g)
   }
@@ -155,9 +205,15 @@ function solveTriangle(k) {
     const miss = [0, 1, 2].filter(function (i) { return S[i] == null })[0]
     if (G[miss] != null) {
       // SAS：缺的边所对的角就是夹角
+      // 2026-11-15 第十六轮复审：余弦定理直算在夹角极小时相消（a=b=1、
+      // C=1e-6° 时第三边误差 15%、C=1e-7° 时 cos 圆整成 1、边算成 0 被
+      // 误杀）。改稳定形 c² = (a−b)² + 4ab·sin²(C/2) 并按最大边归一化。
       const i = (miss + 1) % 3, j = (miss + 2) % 3
       const s = [S[0], S[1], S[2]]
-      s[miss] = Math.sqrt(S[i] * S[i] + S[j] * S[j] - 2 * S[i] * S[j] * Math.cos(deg2rad(G[miss])))
+      const mm = Math.max(S[i], S[j])
+      const ai = S[i] / mm, aj = S[j] / mm
+      const sh = Math.sin(deg2rad(G[miss]) / 2)
+      s[miss] = mm * Math.sqrt((ai - aj) * (ai - aj) + 4 * ai * aj * sh * sh)
       sols = [fromSSS(s)]
     } else {
       // SSA：已知角对已知边

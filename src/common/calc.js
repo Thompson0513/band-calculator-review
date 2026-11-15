@@ -728,6 +728,12 @@ function solveQuad(a, b, c) {
   const c1 = scaled ? c / m : c
   const bigD = (isIntVal(a) && isIntVal(b) && isIntVal(c)) ? bigDisc(a, b, c) : null
   let discN, discOut, exactCls = null
+  // 2026-11-15 第十六轮复审：缩放分支里 discOut 还原失败（真 Δ 溢出
+  // 双精度）时只能回落归一化值，页面若照 disc 显示会把 Δ = 4e400 标
+  // 成「Δ = 4」。此时另给 discStr（真 Δ 的课本式字符串）供页面优先
+  // 显示；discApprox 标记它是否为近似（真 Δ 位数 ≤12 时是精确整数串）。
+  let discStr = null, discApprox = false
+  const supOf = function (e) { return (e < 0 ? '⁻' : '') + String(Math.abs(e)).split('').map(function (ch) { return SUP_DIGITS[ch] }).join('') }
   if (bigD !== null) {
     exactCls = bigD > BigInt(0) ? 1 : bigD < BigInt(0) ? -1 : 0
     if (!scaled) {
@@ -745,6 +751,21 @@ function solveQuad(a, b, c) {
       discN = negD ? -vD : vD
       const restored = (discN * m) * m
       discOut = (isFinite(restored) && restored !== 0) ? restored : discN
+      if (discOut === discN && bigD !== BigInt(0)) {
+        const digs = absD.toString()
+        if (digs.length <= 12) discStr = (negD ? '−' : '') + digs
+        else {
+          // 尾数与指数同源（log10 法）：尾数取自归一化 Δ、指数由缩放
+          // 还原——不能混用 BigInt 精确位数（discN≈1 时会拼出差 10 倍
+          // 的串）。尾数四舍五入顶到 10 时进位归一。
+          const lg = Math.log10(Math.abs(discN)) + 2 * Math.log10(m)
+          let ex = Math.floor(lg)
+          let mt = parseFloat(Math.pow(10, lg - ex).toPrecision(12))
+          if (mt >= 10) { mt = 1; ex++ }
+          discStr = (negD ? '−' : '') + String(mt) + '×10' + supOf(ex)
+          discApprox = true
+        }
+      }
     }
   } else {
     const discPair = det2ddPair(b1, b1, a1, c1, 4)
@@ -761,6 +782,14 @@ function solveQuad(a, b, c) {
     else {
       const rst = (discN * m) * m
       discOut = (isFinite(rst) && rst !== 0) ? rst : ((isFinite(discRaw) && discRaw !== 0) ? discRaw : discN)
+      if (discOut === discN && discN !== 0) {
+        const lg = Math.log10(Math.abs(discN)) + 2 * Math.log10(m)
+        let ex = Math.floor(lg)
+        let mt = parseFloat(Math.pow(10, lg - ex).toPrecision(12))
+        if (mt >= 10) { mt = 1; ex++ }
+        discStr = (discN < 0 ? '−' : '') + String(mt) + '×10' + supOf(ex)
+        discApprox = true
+      }
     }
   }
   const eps = 1e-14 * Math.max(Math.abs(b1 * b1), Math.abs(4 * a1 * c1))
@@ -772,7 +801,7 @@ function solveQuad(a, b, c) {
     if (!isFinite(rA) || !isFinite(rB)) return { error: '数字太大，超出精确计算范围' }
     // 两根恒按 x1 < x2（教材惯例）：Vieta 避相消算出的是大、小两根，旧版
     // 按 b 的符号原样返回，x²−5x+6 = 0 会写成 x1 = 3、x2 = 2。
-    return { type: 'two', disc: discOut, x1: Math.min(rA, rB), x2: Math.max(rA, rB) }
+    return { type: 'two', disc: discOut, discStr: discStr, discApprox: discApprox, x1: Math.min(rA, rB), x2: Math.max(rA, rB) }
   }
   if (cls === 0) {
     const x = -b1 / (2 * a1)
@@ -782,7 +811,7 @@ function solveQuad(a, b, c) {
   const re = -b1 / (2 * a1)
   const im = Math.sqrt(-discN) / Math.abs(2 * a1)
   if (!isFinite(re) || !isFinite(im)) return { error: '数字太大，超出精确计算范围' }
-  return { type: 'complex', disc: discOut, re: re, im: im }
+  return { type: 'complex', disc: discOut, discStr: discStr, discApprox: discApprox, re: re, im: im }
 }
 
 function solveSystem(a1, b1, c1, a2, b2, c2) {

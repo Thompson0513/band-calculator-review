@@ -44,7 +44,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z 断言按 SKIP 处理 */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -542,7 +542,9 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
     eq('12j 页面 10^400 显示「溢出」', i.resDisp, '溢出')
   }
   // B11：排列组合/数列溢出返回 error，不再给 Infinity
-  eq('12k A(200,200) 溢出报错', calc2.permComb(200, 200).error, '数字太大，超出精确计算范围')
+  // 【1.6.0 第十六轮复审修订】A 溢出不再连坐 C：permComb(200,200) 现返回
+  // ok（C = 1、aOf = true），旧「整单报错」断言就地翻转（详见 §15b）。
+  ok('12k A(200,200) A 溢出不连坐 C=1', calc2.permComb(200, 200).type === 'ok' && calc2.permComb(200, 200).C === 1 && calc2.permComb(200, 200).aOf === true)
   eq('12k A(170,170) 正常', calc2.permComb(170, 170).type, 'ok')
   eq('12k 等比 400 项溢出报错', calc2.seqSolve('gp', 1, 10, 400).error, '数字太大，超出精确计算范围')
   eq('12k A(5,2)=20/C(5,2)=10 不变', JSON.stringify([calc2.permComb(5, 2).A, calc2.permComb(5, 2).C]), JSON.stringify([20, 10]))
@@ -861,6 +863,150 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   ok('14i 存储兜底仍在（calc_tool_nav / calc_back_to 读写保留）', ux.indexOf("key: 'calc_back_to'") >= 0 && ux2.indexOf("key: 'calc_tool_nav'") >= 0)
   if (buglog === null) console.log('SKIP 14z BUGLOG 含导航闪屏条目（[审查仓适配] BUGLOG.md 不在公开仓）')
   else ok('14z BUGLOG 含导航闪屏条目', buglog.indexOf('导航闪屏') >= 0)
+}
+
+// ===== §15 第十六轮外部复审（ChatGPT，2026-11-15）逐项核实后修复 =====
+// 报告 13 点：10 点属实已修（本节钉死）、1 点代码属实但真实触发路径不
+// 存在（onInit 存储竞态，防御性修复，15i）、1 点系定版设计但 README
+// 举例写过头（系数键盘无 + 与独立左括号，改 README 不改键盘，无断言）、
+// 1 点现象属实但真值超出双精度可表示范围（等边 1e-200 面积 4.33e-401
+// 小于最小次正规数，任何双精度实现都只能返回 0，不修、无断言）。
+// 报告数字经独立复跑全对上：组合数扫描 17945/6729/45 与原文一字不差。
+{
+  // 15a parseCoeff 精度守卫（两份拷贝同测：抽取函数原文直测）
+  const grabPc = function (uxText) {
+    const seg = uxText.slice(uxText.indexOf('function coeffSrc'), uxText.indexOf('function parseCoeff0'))
+    return new Function('calc', seg + '; return parseCoeff')(calc)
+  }
+  for (const [tag, pcX] of [['主页', grabPc(ux)], ['第二页', grabPc(ux2)]]) {
+    ok('15a ' + tag + ' parseCoeff 超安全整数 → NaN（不静默舍入）', isNaN(pcX('9007199254740993')))
+    ok('15a ' + tag + ' parseCoeff 科学计数法尾数超限 → NaN', isNaN(pcX('9007199254740993e0')))
+    ok('15a ' + tag + ' parseCoeff 分子超限 → NaN', isNaN(pcX('9007199254740993/3')))
+    eq('15a ' + tag + ' parseCoeff 1e20（精确可表示）照常', pcX('100000000000000000000'), 1e20)
+    eq('15a ' + tag + ' parseCoeff 15 位整数照常', pcX('123456789012345'), 123456789012345)
+    eq('15a ' + tag + ' parseCoeff 1/3 不变', pcX('1/3'), 1 / 3)
+    approx('15a ' + tag + ' parseCoeff 2√3 不变', pcX('2√3'), 3.4641016151377544, 1e-12)
+  }
+  // 15b permComb：四个错值点 + 全扫描（n≤150，BigInt 真值；此范围 A 不溢出）
+  eq('15b C(56,27) 精确值', calc2.permComb(56, 27).C, 7384942649010080)
+  ok('15b C(56,27) cExact', calc2.permComb(56, 27).cExact === true)
+  eq('15b C(56,31) 精确值', calc2.permComb(56, 31).C, 5574440580220512)
+  eq('15b C(58,23) 精确值', calc2.permComb(58, 23).C, 8799226775309880)
+  eq('15b C(59,22) 精确值', calc2.permComb(59, 22).C, 8964377427999630)
+  {
+    let bad = 0, tot = 0
+    const bigC = function (n, r) { const q = Math.min(r, n - r); let c = BigInt(1); for (let i = 1; i <= q; i++) c = c * BigInt(n - q + i) / BigInt(i); return c }
+    for (let n = 0; n <= 150; n++) for (let r = 0; r <= n; r++) {
+      const t = bigC(n, r)
+      if (t > BigInt(9007199254740991)) continue
+      tot++
+      const res = calc2.permComb(n, r)
+      if (res.error || !Number.isInteger(res.C) || BigInt(res.C) !== t || !res.cExact) bad++
+    }
+    ok('15b 组合数扫描 n≤150：' + tot + ' 组可精确表示、零错误零错标', bad === 0 && tot > 1000)
+  }
+  ok('15b C(180,171) A 溢出仍给 C', calc2.permComb(180, 171).type === 'ok' && calc2.permComb(180, 171).aOf === true && calc2.permComb(180, 171).C === 446098010817800)
+  // 15c solveRightTri 尺度归一化
+  approx('15c 直角 1e-200/1e-200 → c = √2×10⁻²⁰⁰', calc2.solveRightTri({ a: 1e-200, b: 1e-200, c: null, A: null, B: null }).c, 1.4142135623730951e-200, 1e-12)
+  eq('15c 直角 (3,4,1e200) 拒假勾股', calc2.solveRightTri({ a: 3, b: 4, c: 1e200, A: null, B: null }).error, '三边不符合勾股定理')
+  eq('15c 直角 (1e200,1e200,1e200) 拒假勾股', calc2.solveRightTri({ a: 1e200, b: 1e200, c: 1e200, A: null, B: null }).error, '三边不符合勾股定理')
+  approx('15c 直角 1e200/1e200 → c 有限', calc2.solveRightTri({ a: 1e200, b: 1e200, c: null, A: null, B: null }).c, 1.4142135623730951e200, 1e-12)
+  ok('15c 直角 5/12/13 对照不变', calc2.solveRightTri({ a: 5, b: 12, c: null, A: null, B: null }).c === 13)
+  approx('15c 直角已知斜边反求 (13,5) → 12', calc2.solveRightTri({ a: 5, b: null, c: 13, A: null, B: null }).b, 12, 1e-12)
+  // 15d solveTriangle 近退化稳定形
+  const sas1 = calc2.solveTriangle({ a: 1, b: 1, c: null, A: null, B: null, C: 0.000001 })
+  approx('15d SAS C=1e-6° 第三边', sas1.solutions && sas1.solutions[0].c, 1.7453292519943295e-8, 1e-9)
+  const sas2 = calc2.solveTriangle({ a: 1, b: 1, c: null, A: null, B: null, C: 0.0000001 })
+  approx('15d SAS C=1e-7° 不再误拒、第三边对', sas2.solutions && sas2.solutions[0].c, 1.7453292519943295e-9, 1e-9)
+  const sss1 = calc2.solveTriangle({ a: 1, b: 1, c: 1e-8, A: null, B: null, C: null })
+  approx('15d SSS (1,1,1e-8) 小角保住', sss1.solutions && sss1.solutions[0].C, 5.729577916486889e-7, 1e-6)
+  approx('15d SSS (1,1,1e-8) 面积', sss1.solutions && sss1.solutions[0].area, 5e-9, 1e-6)
+  ok('15d SSS 3/4/5 面积对照不变', Math.abs(calc2.solveTriangle({ a: 3, b: 4, c: 5, A: null, B: null, C: null }).solutions[0].area - 6) < 1e-9)
+  // 15e seqSolve 等比求和相消
+  approx('15e 等比 q=1+1e-12 n=9999 和', calc2.seqSolve('gp', 1, 1.000000000001, 9999).Sn, 9999.000049989445, 1e-9)
+  ok('15e 等比 1,2,10 对照不变', calc2.seqSolve('gp', 1, 2, 10).Sn === 1023)
+  approx('15e 等比 q=√2 n=3 和', calc2.seqSolve('gp', 1, Math.SQRT2, 3).Sn, 4.414213562373095, 1e-12)
+  // 15f fmtVal / fmtSide 精确性（第二页加载器变体，导出直测）
+  const loadPage2X = function () {
+    let script = ux2.slice(ux2.indexOf('<script>') + 8, ux2.indexOf('</script>'))
+    globalThis.__storage = { get(o) { o.success('') }, set() {} }
+    globalThis.__calc2 = calc2
+    script = script
+      .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
+      .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
+      .replace("import device from '@system.device'", 'const device = globalThis.__device')
+      .replace("import router from '@system.router'", 'const router = globalThis.__router')
+      .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
+      .replace("import calc2 from '../../common/calc2'", 'const calc2 = globalThis.__calc2')
+      .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
+      .replace('export default', 'module.exports =')
+    script += '\nmodule.exports.__x = { fmtVal: fmtVal, fmtSide: fmtSide }'
+    const mod = { exports: {} }
+    new Function('module', 'exports', script)(mod, mod.exports)
+    return mod.exports
+  }
+  const dx = loadPage2X()
+  ok('15f fmtVal(2.00000000001) 不冒充整数', dx.__x.fmtVal(2.00000000001).exact === false && dx.__x.fmtVal(2.00000000001).t === '2.00000000001')
+  ok('15f fmtVal(3.000000000015) 不冒充整数', dx.__x.fmtVal(3.000000000015).exact === false)
+  ok('15f fmtVal(4.414213562373095) 标近似', dx.__x.fmtVal(4.414213562373095).exact === false)
+  ok('15f fmtVal(1023) 仍精确', dx.__x.fmtVal(1023).exact === true && dx.__x.fmtVal(1023).t === '1023')
+  ok('15f fmtSide(近似 √2) 不冒充根式', dx.__x.fmtSide(1.4142135623872373).exact === false)
+  ok('15f fmtSide(√2) 根式保留', dx.__x.fmtSide(Math.SQRT2).exact === true && dx.__x.fmtSide(Math.SQRT2).t.indexOf('√2') === 0)
+  // 数列页整机：近似和带 ≈、精确和带 =
+  const sq1 = makeInst2(); sq1.sqKind = 'gp'; sq1.sqa = '1'; sq1.sqx = '1.4142135623730951'; sq1.sqn = '3'; sq1.sqSolve()
+  eq('15f 数列页 q=√2 前 3 项和带 ≈', sq1.sqLines[1], '前 3 项和 ≈ 4.41421356237')
+  const sq2 = makeInst2(); sq2.sqKind = 'ap'; sq2.sqa = '1'; sq2.sqx = '1.00000000001'; sq2.sqn = '2'; sq2.sqSolve()
+  eq('15f 数列页等差近似项带 ≈', sq2.sqLines[0], '第 2 项 ≈ 2.00000000001')
+  const sq3 = makeInst2(); sq3.sqKind = 'gp'; sq3.sqa = '1'; sq3.sqx = '2'; sq3.sqn = '10'; sq3.sqSolve()
+  eq('15f 数列页精确和仍带 =', sq3.sqLines[1], '前 10 项和 = 1023')
+  // 排列组合页整机：A 溢出行与 C 行分开
+  const pm1 = makeInst2(); pm1.pmn = '200'; pm1.pmr = '200'; pm1.pmSolve()
+  ok('15f 排列组合页 A 溢出只标 A 行、C=1 照常', pm1.pmLines[0].indexOf('A(200,200) 太大了') === 0 && pm1.pmLines[1] === 'C(200,200) = 1')
+  // 15g 圆工具分开判（主页整机）
+  const ci1 = makeInst(); ci1.cr = '1e200'; ci1.circSolve()
+  ok('15g 圆 r=1e200 周长照常、面积单独标超范围', ci1.cLines[0].indexOf('周长 ≈ ') === 0 && ci1.cLines[1] === '面积太大了，超出精确计算范围')
+  const ci2 = makeInst(); ci2.cr = '1e-200'; ci2.circSolve()
+  eq('15g 圆 r=1e-200 面积下溢给课本式', ci2.cLines[1], '面积 ≈ 3.14159265359×10⁻⁴⁰⁰')
+  const ci3 = makeInst(); ci3.cr = '2'; ci3.circSolve()
+  eq('15g 圆 r=2 对照不变', ci3.cLines[0], '周长 = 4π')
+  // 15h Δ 真值串与绘图交点（主页整机）
+  const q1 = makeInst(); q1.qa = '1e200'; q1.qb = '0'; q1.qc = '-1e200'; q1.quadSolve()
+  eq('15h 方程页 Δ 显示真值量级', q1.qLines[0], '判别式 Δ ≈ 4×10⁴⁰⁰ > 0')
+  q1.openPlot('quad')
+  eq('15h 绘图交点走稳定路径', q1.plotLines[2], '与 x 轴交点 x = −1、1')
+  const q2 = calc.solveQuad(1e200, 0, -1e200)
+  ok('15h solveQuad 给 discStr、根不变', q2.discStr === '4×10⁴⁰⁰' && q2.x1 === -1 && q2.x2 === 1)
+  ok('15h solveQuad 普通输入 discStr 为空', calc.solveQuad(2, -7, 3).discStr === null && calc.solveQuad(2, -7, 3).disc === 25)
+  // 15i onInit 存储竞态守卫（参数有效时跳过存储读；无参数时兜底仍工作）
+  const loadPage2S = function (stored) {
+    let script = ux2.slice(ux2.indexOf('<script>') + 8, ux2.indexOf('</script>'))
+    globalThis.__storage = { get(o) { o.success(stored) }, set() {} }
+    globalThis.__calc2 = calc2
+    script = script
+      .replace("import storage from '@system.storage'", 'const storage = globalThis.__storage')
+      .replace("import vibrator from '@system.vibrator'", 'const vibrator = globalThis.__vibrator')
+      .replace("import device from '@system.device'", 'const device = globalThis.__device')
+      .replace("import router from '@system.router'", 'const router = globalThis.__router')
+      .replace("import calc from '../../common/calc'", 'const calc = globalThis.__calc')
+      .replace("import calc2 from '../../common/calc2'", 'const calc2 = globalThis.__calc2')
+      .replace("import { keyMatches, normalizeDeviceId, shortCodeForDevice } from '../../common/paykey'", 'const { keyMatches, normalizeDeviceId, shortCodeForDevice } = globalThis.__paykey')
+      .replace('export default', 'module.exports =')
+    const mod = { exports: {} }
+    new Function('module', 'exports', script)(mod, mod.exports)
+    return mod.exports
+  }
+  const make2S = function (defS, props) {
+    const inst = {}
+    Object.assign(inst, JSON.parse(JSON.stringify(defS.data)))
+    for (const k of Object.keys(defS)) if (typeof defS[k] === 'function') inst[k] = defS[k].bind(inst)
+    Object.assign(inst, props || {})
+    inst.onInit()
+    return inst
+  }
+  eq('15i 参数 perm＋存储残留 seq → 仍 perm', make2S(loadPage2S('seq'), { tool: 'perm' }).view, 'perm')
+  eq('15i 无参数＋存储 seq → 兜底到 seq', make2S(loadPage2S('seq'), {}).view, 'seq')
+  if (buglog === null) console.log('SKIP 15z BUGLOG 含第十六轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+  else ok('15z BUGLOG 含第十六轮条目', buglog.indexOf('第十六轮') >= 0)
 }
 
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)
