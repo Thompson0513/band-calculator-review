@@ -176,7 +176,7 @@
         <div class="plot-btn" onclick="openPlot('lin')"><text class="plot-btn-t">看图象</text></div>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="linPad($item.v)">
+        <div class="key key-num key-sm key-c5 {{$item.kcls ? $item.kcls : ''}}" for="{{quadKeys}}" onclick="linPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
         </div>
       </div>
@@ -208,7 +208,7 @@
         <div class="plot-btn" onclick="openPlot('quad')"><text class="plot-btn-t">看图象（抛物线）</text></div>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="quadPad($item.v)">
+        <div class="key key-num key-sm key-c5 {{$item.kcls ? $item.kcls : ''}}" for="{{quadKeys}}" onclick="quadPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
         </div>
       </div>
@@ -249,7 +249,7 @@
         <text class="q-line" for="{{sLines}}">{{' ' + $item}}</text>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm key-sys key-c5" for="{{quadKeys}}" onclick="sysPad($item.v)">
+        <div class="key key-num key-sm key-sys key-c5 {{$item.kcls ? $item.kcls : ''}}" for="{{quadKeys}}" onclick="sysPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
         </div>
       </div>
@@ -368,7 +368,7 @@
         <text class="q-line" for="{{tLines}}">{{' ' + $item}}</text>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="triPad($item.v)">
+        <div class="key key-num key-sm key-c5 {{$item.kcls ? $item.kcls : ''}}" for="{{quadKeys}}" onclick="triPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
         </div>
       </div>
@@ -391,7 +391,7 @@
         <text class="q-line" for="{{cLines}}">{{' ' + $item}}</text>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm key-c5" for="{{quadKeys}}" onclick="circPad($item.v)">
+        <div class="key key-num key-sm key-c5 {{$item.kcls ? $item.kcls : ''}}" for="{{quadKeys}}" onclick="circPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 22px;">{{$item.label}}</text>
         </div>
       </div>
@@ -451,7 +451,7 @@
         <div class="plot-btn" onclick="drawPlot"><text class="plot-btn-t">画图象</text></div>
       </div>
       <div class="pad pad-sm">
-        <div class="key key-num key-sm key-xs key-c5" for="{{quadKeys}}" onclick="plotPad($item.v)">
+        <div class="key key-num key-sm key-xs key-c5 {{$item.kcls ? $item.kcls : ''}}" for="{{quadKeys}}" onclick="plotPad($item.v)">
           <text class="key-t key-t-num" style="font-size: 20px;">{{$item.label}}</text>
         </div>
       </div>
@@ -566,13 +566,16 @@ const UNIT_KEYS = [
   { v: '1', label: '1' }, { v: '2', label: '2' }, { v: '3', label: '3' }, { v: 'neg', label: '±' },
   { v: '0', label: '0' }, { v: '00', label: '00' }, { v: '.', label: '.' }, { v: 'ok', label: '带回' }
 ]
-// 系数键盘（1.6.0）：只有右括号没左括号是刻意的——左括号唯一来源是 √ 键自带的
-// '√('，) 负责关根号（√3/2 与 √(2/3) 靠它区分）；未关的根号解析时自动补齐。
+// 系数键盘（1.6.0）：首版只有右括号——左括号唯一来源是 √ 键自带的 '√('，
+// ) 负责关根号（√3/2 与 √(2/3) 靠它区分）；2026-11-15 按用户决定扩键：
+// 补 +、−、×、( 共 24 键（末行 » 加宽占两格），和式/差式系数如 (1+√5)/2
+// 可直接输入；未闭合的括号（含 √()解析时自动补齐。
 const QUAD_KEYS = [
   { v: '7', label: '7' }, { v: '8', label: '8' }, { v: '9', label: '9' }, { v: 'back', label: '←' }, { v: 'C', label: 'C' },
-  { v: '4', label: '4' }, { v: '5', label: '5' }, { v: '6', label: '6' }, { v: 'sqrt', label: '√' }, { v: 'pi', label: 'π' },
-  { v: '1', label: '1' }, { v: '2', label: '2' }, { v: '3', label: '3' }, { v: 'e', label: 'e' }, { v: ')', label: ')' },
-  { v: '0', label: '0' }, { v: '.', label: '.' }, { v: '/', label: '/' }, { v: 'neg', label: '±' }, { v: 'ok', label: '»' }
+  { v: '4', label: '4' }, { v: '5', label: '5' }, { v: '6', label: '6' }, { v: '+', label: '+' }, { v: '−', label: '−' },
+  { v: '1', label: '1' }, { v: '2', label: '2' }, { v: '3', label: '3' }, { v: '×', label: '×' }, { v: 'sqrt', label: '√' },
+  { v: '(', label: '(' }, { v: ')', label: ')' }, { v: 'pi', label: 'π' }, { v: 'e', label: 'e' }, { v: '/', label: '/' },
+  { v: '0', label: '0' }, { v: '.', label: '.' }, { v: 'neg', label: '±' }, { v: 'ok', label: '»', kcls: 'key-c5w' }
 ]
 const INT_KEYS = [
   { v: '7', label: '7' }, { v: '8', label: '8' }, { v: '9', label: '9' }, { v: 'back', label: '←' },
@@ -707,6 +710,41 @@ function editCoeff(cur, v) {
   if (v === 'pi') return cur.length >= 20 ? cur : cur + 'π'
   if (v === 'e') return cur.length >= 20 ? cur : cur + 'e'
   if (v === ')') return cur.length >= 20 ? cur : cur + ')'
+  // 2026-11-15 系数键盘扩键（用户拍板按外部复审建议）：+、−、×、( 四键。
+  // 运算符顶替规则与方程键盘同口径；'(' 在操作数后自动补 ×(（隐含乘法）；
+  // 未闭合括号由 coeffSrc 解析时自动补齐，√( 与 ( 共用这条路。
+  if (v === '+') {
+    if (cur === '' || cur === '-' || last === '(' || last === '/' || last === '+') return cur
+    if (last === '-') {
+      const prev = cur.charAt(cur.length - 2)
+      if (prev === '(' || prev === '') return cur
+      return cur.slice(0, -1) + '+'
+    }
+    if (cur.length >= 20) return cur
+    return cur + '+'
+  }
+  if (v === '−') {
+    if (last === '-') return cur
+    if (cur.length >= 20) return cur
+    if (last === '+') return cur.slice(0, -1) + '-'
+    return cur + '-'
+  }
+  if (v === '×') {
+    if (cur === '' || cur === '-' || last === '(' || last === '/' || last === '×') return cur
+    if (last === '-') {
+      const prev = cur.charAt(cur.length - 2)
+      if (prev === '(' || prev === '') return cur
+      return cur.slice(0, -1) + '×'
+    }
+    if (cur.length >= 20) return cur
+    if (last === '+') return cur.slice(0, -1) + '×'
+    return cur + '×'
+  }
+  if (v === '(') {
+    if (cur.length >= 20) return cur
+    if (last && /[0-9.)πe]/.test(last)) return cur.length + 2 > 20 ? cur : cur + '×('
+    return cur + '('
+  }
   if (v === '/') {
     if (cur === '' || cur === '-' || last === '/' || last === '(') return cur
     if (cur.indexOf('(') < 0 && cur.indexOf('/') >= 0) return cur
@@ -3042,6 +3080,7 @@ export default {
 .pad-sm { padding-left: 6px; }
 .key-sm { width: 74px; height: 42px; border-radius: 14px; }
 .key-c5 { width: 58px; }
+.key-c5w { width: 122px; }
 .eqkey { width: 74px; height: 36px; border-radius: 12px; }
 .eqkey-c5 { width: 58px; }
 .eqkey-s { height: 28px; }

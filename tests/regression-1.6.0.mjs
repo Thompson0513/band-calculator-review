@@ -3,10 +3,13 @@
 // 看看，比如 π 输出的结果也可以带它，这样的话就不用精确计算」，并拍板与既有
 // 工作融成一版 1.6.0；又问「根据考题以及那些实际要求，有必要再加些别的吗」。
 // 本版内容：
-//  ① 系数键盘改 5 列（QUAD_KEYS 20 键）：加 √、π、e、) ——系数格（一次/二次/
-//     方程组/图象设置/三角形/圆）从纯数字分数升级为可输单项式式子。只有右括
-//     号没左括号是刻意的：左括号唯一来源是 √ 键自带的 '√('，右括号负责关它
-//     （√3/2 的 / 必须落在根号外）；未关的根号解析时自动补齐（coeffSrc）。
+//  ① 系数键盘改 5 列（QUAD_KEYS 首版 20 键）：加 √、π、e、) ——系数格（一次/
+//     二次/方程组/图象设置/三角形/圆）从纯数字分数升级为可输单项式式子。首
+//     版只有右括号没左括号（左括号唯一来源是 √ 键自带的 '√('，右括号负责关
+//     它，√3/2 的 / 必须落在根号外）；未关的括号解析时自动补齐（coeffSrc）。
+//     【2026-11-15 扩键修订】用户拍板按外部复审建议补 +、−、×、( 四键（24
+//     键、末行 » 加宽占两格），和式系数 (1+√5)/2 可直接输入，§8a 已翻转、
+//     §16 钉死新行为；引擎（coeffSrc/parseCoeff）零改动。
 //  ② parseCoeff 升级：纯数字/分数走旧快路径（逐字旧口径、regression-1.4.17
 //     的抽取直测守恒）；带符号式子走 calc.evaluate（coeffSrc 补隐含乘号与括号）。
 //  ③ 单项式符号层（parseMono/monoMul/monoDiv/monoSub/monoSqrt/monoStr）：
@@ -44,7 +47,7 @@ const ux = readFileSync(uxPath, 'utf8')
 const ux2 = readFileSync(new URL('../src/pages/tools2/index.ux', import.meta.url), 'utf8')
 const man = JSON.parse(readFileSync(new URL('../src/manifest.json', import.meta.url), 'utf8'))
 let buglog = null
-try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z 断言按 SKIP 处理 */ }
+try { buglog = readFileSync(new URL('../BUGLOG.md', import.meta.url), 'utf8') } catch (e) { /* [审查仓适配] BUGLOG.md 不入公开仓，缺失时 9g/12r/13z/14z/15z/16z 断言按 SKIP 处理 */ }
 
 function loadPage(keyOk) {
   let script = ux.slice(ux.indexOf('<script>') + 8, ux.indexOf('</script>'))
@@ -296,9 +299,12 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
 // ---------- §8 键盘与输入链 ----------
 {
   const inst = makeInst()
-  eq('8a 系数键盘 20 键', inst.quadKeys.length, 20)
+  // 【2026-11-15 扩键修订】首版 20 键、无左括号的断言就地翻转（见 §16）。
+  eq('8a 系数键盘 24 键', inst.quadKeys.length, 24)
   ok('8a 系数键盘含 √/π/e/)///±', ['sqrt', 'pi', 'e', ')', '/', 'neg'].every((v) => inst.quadKeys.some((k) => k.v === v)))
-  ok('8a 系数键盘无 00、无左括号', !inst.quadKeys.some((k) => k.v === '00') && !inst.quadKeys.some((k) => k.v === '('))
+  ok('8a 系数键盘含 +、−、×、(（扩键四键）', ['+', '−', '×', '('].every((v) => inst.quadKeys.some((k) => k.v === v)))
+  ok('8a 系数键盘仍无 00', !inst.quadKeys.some((k) => k.v === '00'))
+  ok('8a 末键 » 带加宽类 key-c5w', inst.quadKeys[23].v === 'ok' && inst.quadKeys[23].kcls === 'key-c5w')
   eq('8b 方程键盘 30 键', inst.eqKeys.length, 30)
   ok('8b 方程键盘含 √(、π、e、^、%、°', ['√(', 'π', 'e', '^', '%', '°'].every((v) => inst.eqKeys.some((k) => k.v === v)))
   const k2 = inst.eqKeys.find((k) => k.v === '²')
@@ -1007,6 +1013,46 @@ const monoVal = (m) => (m.qn / m.qd) * Math.pow(Math.PI, m.pi) * Math.sqrt(m.rad
   eq('15i 无参数＋存储 seq → 兜底到 seq', make2S(loadPage2S('seq'), {}).view, 'seq')
   if (buglog === null) console.log('SKIP 15z BUGLOG 含第十六轮条目（[审查仓适配] BUGLOG.md 不在公开仓）')
   else ok('15z BUGLOG 含第十六轮条目', buglog.indexOf('第十六轮') >= 0)
+}
+
+
+// ===== §16 系数键盘扩键（2026-11-15，用户拍板按第十六轮复审建议） =====
+// 补 +、−、×、( 四键（24 键、5 行、末行 » 加宽占两格）：和式/差式系数
+// 如 (1+√5)/2 可直接输入。引擎零改动——coeffSrc 的自动补括号与 evaluate
+// 本就能算这类式子，缺的只是键盘入口。§8a 的 20 键/无左括号断言已翻转。
+{
+  const grabEc = function (uxText) {
+    const i = uxText.indexOf('function editCoeff')
+    const j = uxText.indexOf('\n}\n', i)
+    return new Function(uxText.slice(i, j + 3) + '; return editCoeff')()
+  }
+  const ecCases = [['', '+', ''], ['3', '+', '3+'], ['3+', '−', '3-'], ['3-', '+', '3+'], ['(', '−', '(-'], ['(-', '+', '(-'], ['2', '(', '2×('], ['', '(', '('], ['3/', '×', '3/'], ['3+', '×', '3×'], ['2', '×', '2×'], ['3', '−', '3-'], ['', '−', '-'], ['√(', '−', '√(-'], ['3×', '(', '3×(']]
+  for (const [tag, uxText] of [['主页', ux], ['第二页', ux2]]) {
+    const ec = grabEc(uxText)
+    for (const [cur, v, want] of ecCases) eq('16a ' + tag + ' editCoeff(' + JSON.stringify(cur) + ', ' + v + ')', ec(cur, v), want)
+  }
+  const grabPc = function (uxText) {
+    const seg = uxText.slice(uxText.indexOf('function coeffSrc'), uxText.indexOf('function parseCoeff0'))
+    return new Function('calc', seg + '; return parseCoeff')(calc)
+  }
+  for (const [tag, uxText] of [['主页', ux], ['第二页', ux2]]) {
+    const pc = grabPc(uxText)
+    ok('16b ' + tag + ' (1+√5)/2 全闭合形', Math.abs(pc('(1+√(5))/2') - (1 + Math.sqrt(5)) / 2) < 1e-12)
+    ok('16b ' + tag + ' (1+√5 外层未闭合自动补', Math.abs(pc('(1+√(5)') - (1 + Math.sqrt(5))) < 1e-12)
+    ok('16b ' + tag + ' 2×(1+√3)', Math.abs(pc('2×(1+√(3))') - 2 * (1 + Math.sqrt(3))) < 1e-12)
+    ok('16b ' + tag + ' (2-√3)(2+√3) 隐含乘法', Math.abs(pc('(2-√(3))×(2+√(3))') - 1) < 1e-12)
+    ok('16b ' + tag + ' ((1+2)×3)/4 嵌套', pc('((1+2)×3)/4') === 2.25)
+  }
+  const inst = makeInst()
+  inst.qa = '(1+√(5))/2'; inst.qb = '0'; inst.qc = '-1'; inst.quadSolve()
+  ok('16c 二次方程 a=(1+√5)/2、c=-1 出两根 ±0.7861513777', inst.qLines.join(' ').indexOf('0.7861513777') >= 0)
+  const inst2 = makeInst2()
+  eq('16d 第二页系数键盘 24 键', inst2.quadKeys.length, 24)
+  ok('16d 第二页系数键盘含 ( 与 +', inst2.quadKeys.some((k) => k.v === '(') && inst2.quadKeys.some((k) => k.v === '+'))
+  ok('16e 主页 CSS 含 key-c5w 122px 且 6 处键盘绑 kcls', ux.indexOf('.key-c5w { width: 122px; }') >= 0 && (ux.match(/kcls \? \$item\.kcls/g) || []).length >= 6)
+  ok('16e 第二页 CSS 含 key-c5w 122px 且 4 处键盘绑 kcls', ux2.indexOf('.key-c5w { width: 122px; }') >= 0 && (ux2.match(/kcls \? \$item\.kcls/g) || []).length >= 4)
+  if (buglog === null) console.log('SKIP 16z BUGLOG 含扩键条目（[审查仓适配] BUGLOG.md 不在公开仓）')
+  else ok('16z BUGLOG 含扩键条目', buglog.indexOf('扩键') >= 0)
 }
 
 console.log('regression-1.6.0: pass=' + pass + ' fail=' + fail)
